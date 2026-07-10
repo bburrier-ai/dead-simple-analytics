@@ -34,14 +34,30 @@ def test_session_invalid_and_missing_user(client):
 
 
 def test_collect_options_and_cors(client):
-    res = client.options("/collect")
+    # Cross-origin preflight must succeed even when Origin is not in CORS_ORIGINS.
+    res = client.options(
+        "/collect",
+        headers={
+            "Origin": "https://beauburrier.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
     assert res.status_code == 204
+    assert res.headers.get("access-control-allow-origin") == "*"
+    assert "POST" in (res.headers.get("access-control-allow-methods") or "")
+    assert "access-control-allow-credentials" not in {
+        k.lower() for k in res.headers.keys()
+    }
 
     login(client)
     site_key = create_site(client, allowed_domains=["localhost"]).json()["site_key"]
     posted = collect(client, site_key, "pageview")
     assert posted.status_code == 200
     assert posted.headers.get("access-control-allow-origin") == "*"
+    assert "access-control-allow-credentials" not in {
+        k.lower() for k in posted.headers.keys()
+    }
 
 
 def test_favicon_and_login_html(client):
