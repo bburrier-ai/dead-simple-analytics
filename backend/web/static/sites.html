@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sites - Dead Simple Analytics</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/static/img/favicon.png" sizes="32x32" />
+    <link rel="stylesheet" href="/static/css/app.css" />
+    <script src="/components-config.js"></script>
+  </head>
+  <body>
+    <header class="app-header" id="app-header"></header>
+
+    <main class="page-main">
+      <div class="page-header">
+        <div>
+          <h1>Sites</h1>
+          <p class="subtitle">Manage tracked sites and copy your snippet</p>
+        </div>
+      </div>
+
+      <div class="card" style="padding:1rem;margin-bottom:1.5rem">
+        <h2 style="margin:0 0 0.75rem;font-size:0.95rem">Add site</h2>
+        <p id="site-error" class="text-muted" hidden style="color:#a33"></p>
+        <form id="site-form" class="filters-bar" style="align-items:end">
+          <div>
+            <label for="site-name">Name</label>
+            <input type="text" id="site-name" required placeholder="My blog" />
+          </div>
+          <div>
+            <label for="site-domains">Allowed domains</label>
+            <input type="text" id="site-domains" required placeholder="example.com" />
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary">Add site</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="data-table-wrap card table-card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Domains</th>
+              <th>Site key</th>
+              <th>Snippet</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="sites-body"></tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem;padding:1rem">
+        <h2 style="margin:0 0 0.75rem;font-size:0.95rem">Tracking</h2>
+        <p style="margin:0;font-size:0.85rem;color:var(--color-text-muted)">
+          Tag interactive elements with <code>data-track-id="cta-signup"</code> to record
+          <strong>clicks</strong> and first <strong>hover</strong> per element per page load.
+        </p>
+      </div>
+    </main>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/shell.js"></script>
+    <script src="/static/js/sites.js"></script>
+    <script src="/static/js/demo-footer.js"></script>
+    <script>
+      (function loadComponents() {
+        var base = (window.__COMPONENTS_CDN__ || "/components").replace(/\/$/, "");
+        var s = document.createElement("script");
+        s.src = base + "/loader.js";
+        s.onload = function () {
+          (window.__componentsLoaderReady || Promise.resolve()).then(function () {
+            return renderShell({ page: "sites" });
+          }).then(function () {
+            return window.initSitesPage && window.initSitesPage();
+          });
+        };
+        document.head.appendChild(s);
+      })();
+    </script>
+  </body>
+</html>

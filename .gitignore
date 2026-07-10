@@ -1,0 +1,13 @@
+.env
+.envrc
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+backups/
+
+# Internal / local-only - never commit to public repos
+SPEC.md
+mockup/

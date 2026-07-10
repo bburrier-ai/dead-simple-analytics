@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dsa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dsa_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-dead_simple_analytics}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dsa}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dsa}:${POSTGRES_PASSWORD:-dsa_dev_password}@postgres:5432/${POSTGRES_DB:-dead_simple_analytics}
+    ports:
+      - "${DSA_HOST_PORT:-8082}:8000"
+    volumes:
+      - ../components/public:/components/public:ro
+      - ./backend/web:/app/web:ro
+      - ./backend/app:/app/app:ro
+      - ./backend/demo:/app/demo:ro
+      - ./backend/services:/app/services:ro
+      - ./backend/db:/app/db:ro
+      - ./backend/config:/app/config:ro
+      - ./backend/core:/app/core:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  postgres_data:

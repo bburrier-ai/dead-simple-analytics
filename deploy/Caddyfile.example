@@ -1,0 +1,7 @@
+# Host Caddyfile should import deploy-managed vhosts:
+#   import sites/*
+#
+# Example drop-in: /etc/caddy/sites/stats.example.com.caddy
+stats.example.com {
+    reverse_proxy localhost:8082
+}
