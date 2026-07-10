@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dsa
+          POSTGRES_PASSWORD: dsa_dev_password
+          POSTGRES_DB: dead_simple_analytics_test
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U dsa -d dead_simple_analytics_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          working-directory: backend
+
+      - name: Set up Python
+        run: uv python install 3.12
+        working-directory: backend
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+        working-directory: backend
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: cd backend && uv run pytest -v
