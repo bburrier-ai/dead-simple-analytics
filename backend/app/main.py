@@ -117,7 +117,7 @@ def create_app() -> FastAPI:
         return FileResponse(
             STATIC_DIR / "js" / "dsa.js",
             media_type="application/javascript",
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "public, max-age=60, must-revalidate"},
         )
 
     prefix = "/api"
