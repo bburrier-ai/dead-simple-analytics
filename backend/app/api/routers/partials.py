@@ -102,8 +102,10 @@ def sites_table(user: CurrentUser, conn: DbConn, demo_mode: DemoMode) -> str:
     out = []
     for site in sites:
         site_id = str(site["id"])
-        domains = ", ".join(site.get("allowed_domains") or [])
+        domains_list = site.get("allowed_domains") or []
+        domains = ", ".join(domains_list)
         snippet = site.get("snippet") or sites_service.snippet_for(site["site_key"])
+        curl = sites_service.curl_for(site["site_key"], domains_list)
         out.append(
             f"""<tr class="no-click site-row"
           data-site-id="{esc(site_id)}"
@@ -114,9 +116,14 @@ def sites_table(user: CurrentUser, conn: DbConn, demo_mode: DemoMode) -> str:
           <td>{esc(site["name"])}</td>
           <td class="text-muted">{esc(domains)}</td>
           <td class="mono">{esc(site["site_key"])}</td>
-          <td><button type="button" class="btn" data-copy-snippet="{esc(snippet)}">
-            Copy tag
-          </button></td>
+          <td class="site-actions">
+            <button type="button" class="btn" data-copy-snippet="{esc(snippet)}">
+              Copy tag
+            </button>
+            <button type="button" class="btn" data-curl-test="{esc(curl)}">
+              Test w/curl
+            </button>
+          </td>
           <td><button type="button" class="btn" data-edit-site>Edit</button></td>
         </tr>"""
         )

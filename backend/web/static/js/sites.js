@@ -16,6 +16,7 @@ function inputCell(value, field, className = "") {
 
 function enterEditMode(row) {
   const { siteId, siteName, siteDomains, siteKey } = row.dataset;
+  hideCurlPopover();
   row.classList.add("site-row--editing");
   row.replaceChildren(
     inputCell(siteName, "name"),
@@ -47,6 +48,51 @@ function readEditRow(row) {
   };
 }
 
+let curlPopoverEl = null;
+let curlPopoverAnchor = null;
+
+function hideCurlPopover() {
+  if (curlPopoverEl) {
+    curlPopoverEl.remove();
+    curlPopoverEl = null;
+  }
+  curlPopoverAnchor = null;
+}
+
+function showCurlPopover(anchor, curl) {
+  hideCurlPopover();
+  const pop = document.createElement("div");
+  pop.className = "curl-popover";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "curl command");
+  pop.innerHTML = `
+    <span class="curl-popover-label">Copied to clipboard</span>
+    <code class="curl-popover-preview"></code>
+  `;
+  pop.querySelector(".curl-popover-preview").textContent = curl;
+  document.body.appendChild(pop);
+
+  const rect = anchor.getBoundingClientRect();
+  const pad = 8;
+  const width = Math.min(420, window.innerWidth - pad * 2);
+  let left = rect.left;
+  if (left + width > window.innerWidth - pad) {
+    left = Math.max(pad, window.innerWidth - width - pad);
+  }
+  let top = rect.bottom + 6;
+  pop.style.width = `${width}px`;
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+
+  const popHeight = pop.getBoundingClientRect().height;
+  if (top + popHeight > window.innerHeight - pad && rect.top > popHeight + pad) {
+    pop.style.top = `${rect.top - popHeight - 6}px`;
+  }
+
+  curlPopoverEl = pop;
+  curlPopoverAnchor = anchor;
+}
+
 window.initSitesPage = async function initSitesPage() {
   document.getElementById("site-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -69,6 +115,7 @@ window.initSitesPage = async function initSitesPage() {
   document.body.addEventListener("click", async (e) => {
     const copyBtn = e.target.closest("[data-copy-snippet]");
     if (copyBtn) {
+      hideCurlPopover();
       navigator.clipboard.writeText(copyBtn.getAttribute("data-copy-snippet") || "");
       copyBtn.textContent = "Copied!";
       setTimeout(() => {
@@ -76,6 +123,28 @@ window.initSitesPage = async function initSitesPage() {
       }, 1500);
       return;
     }
+
+    const curlBtn = e.target.closest("[data-curl-test]");
+    if (curlBtn) {
+      e.stopPropagation();
+      if (curlPopoverEl && curlPopoverAnchor === curlBtn) {
+        hideCurlPopover();
+        return;
+      }
+      const curl = curlBtn.getAttribute("data-curl-test") || "";
+      try {
+        await navigator.clipboard.writeText(curl);
+      } catch {
+        /* still show popover so the command is visible */
+      }
+      showCurlPopover(curlBtn, curl);
+      return;
+    }
+
+    if (e.target.closest(".curl-popover")) {
+      return;
+    }
+    hideCurlPopover();
 
     const editBtn = e.target.closest("[data-edit-site]");
     if (editBtn) {
@@ -113,6 +182,7 @@ window.initSitesPage = async function initSitesPage() {
 };
 
 async function refreshSitesTable() {
+  hideCurlPopover();
   const tbody = document.getElementById("sites-body");
   if (!tbody) return;
   const html = await fetch("/partials/sites-table", { credentials: "include" }).then((r) =>
