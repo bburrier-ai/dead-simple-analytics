@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -8,11 +9,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routers import auth, collect, demo_mode, events, health, pages, partials, sites, stats
+from app.api.routers import (
+    auth,
+    collect,
+    demo_mode,
+    events,
+    health,
+    live,
+    pages,
+    partials,
+    sites,
+    stats,
+)
 from config.logging import setup_logging
 from config.settings import settings
 from core.csrf import validate_csrf
 from core.exceptions import AppError, ForbiddenError, UnauthorizedError
+from core.live import live_hub
 from db.migrations import run_migrations
 from web.paths import STATIC_DIR
 
@@ -24,7 +37,11 @@ COMPONENTS_DIR = Path("/components/public")
 async def lifespan(_app: FastAPI):
     setup_logging()
     run_migrations()
-    yield
+    live_hub.bind_loop(asyncio.get_running_loop())
+    try:
+        yield
+    finally:
+        live_hub.unbind_loop()
 
 
 def create_app() -> FastAPI:
@@ -96,6 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(sites.router, prefix=prefix)
     app.include_router(stats.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
+    app.include_router(live.router, prefix=prefix)
     app.include_router(collect.router)
     app.include_router(demo_mode.router)
     app.include_router(partials.router)

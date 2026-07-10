@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.pool import NullPool
 
 from config.settings import settings
 
@@ -13,7 +14,13 @@ def get_engine(url: str | None = None) -> Engine:
     global _engine
     target = url or settings.database_url
     if _engine is None or str(_engine.url) != target:
-        _engine = create_engine(target, pool_pre_ping=True, pool_size=5)
+        # Tests open many short-lived connections; NullPool avoids exhausting Postgres.
+        kwargs: dict = {"pool_pre_ping": True}
+        if settings.app_env == "test" or "5434" in target:
+            kwargs["poolclass"] = NullPool
+        else:
+            kwargs["pool_size"] = 5
+        _engine = create_engine(target, **kwargs)
     return _engine
 
 

@@ -131,7 +131,9 @@ fi
 SITE_FILE="${CADDY_SITES_DIR}/${DOMAIN}.caddy"
 cat > "$SITE_FILE" <<EOF
 ${DOMAIN} {
-    reverse_proxy localhost:8082
+    reverse_proxy localhost:8082 {
+        flush_interval -1
+    }
 }
 EOF
 

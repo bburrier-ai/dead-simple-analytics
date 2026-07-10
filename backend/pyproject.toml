@@ -13,6 +13,7 @@ dependencies = [
   "pydantic[email]>=2.10.0",
   "pydantic-settings>=2.6.0",
   "python-multipart>=0.0.12",
+  "tzdata>=2024.1",
 ]
 
 [dependency-groups]
@@ -20,6 +21,8 @@ dev = [
   "pytest>=8.3.0",
   "httpx>=0.28.0",
   "ruff>=0.8.0",
+  "pytest-cov>=7.1.0",
+  "pytest-asyncio>=1.4.0",
 ]
 
 [tool.ruff]
@@ -32,3 +35,31 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = [
+  "--cov=app",
+  "--cov=config",
+  "--cov=core",
+  "--cov=db",
+  "--cov=demo",
+  "--cov=services",
+  "--cov=web",
+  "--cov-report=term-missing",
+  "--cov-fail-under=100",
+]
+
+[tool.coverage.run]
+omit = [
+  "alembic/*",
+  "tests/*",
+  ".venv/*",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+]

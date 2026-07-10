@@ -1,18 +1,3 @@
-/**
- * Dead Simple Analytics collector - pageviews, clicks, hovers.
- *
- * Privacy (GDPR / DNT / GPC):
- * - Do Not Track or Global Privacy Control: no collection.
- * - Without consent: session-scoped analytics only (no visitor_id, no visitor_hash).
- * - With consent: persistent visitor_id + visitor_hash for cross-session counts.
- *
- * Consent options (pick one):
- * - Inject the script only after your banner accepts (recommended).
- * - data-consent="granted" on the script tag when consent is already given.
- * - Call DSA.grantConsent() after the user accepts (e.g. from your CMP).
- *
- * <script defer src="https://analytics.example.com/dsa.js" data-site="SITE_KEY"></script>
- */
 (function () {
   const script = document.currentScript;
   if (!script) return;

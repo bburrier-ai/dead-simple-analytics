@@ -30,7 +30,7 @@ help:
 	@echo "  make lint            Run backend ruff lint"
 	@echo "  make format          Run backend ruff format + fix"
 	@echo ""
-	@echo "  make test            Run backend tests"
+	@echo "  make test            Run backend tests (unit+integration, 100% coverage gate)"
 	@echo "  make test-unit       Run unit tests only"
 	@echo "  make ci              lint + test"
 	@echo "  make test-up         Start test Postgres on :5434"

@@ -68,6 +68,8 @@ const DSA = (() => {
       }),
     visits: (siteId, opts = {}) => {
       const params = new URLSearchParams({ site_id: siteId });
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) params.set("tz", tz);
       if (opts.hours) params.set("hours", String(opts.hours));
       else params.set("days", String(opts.days ?? 14));
       return request(`/api/stats/visits?${params}`);

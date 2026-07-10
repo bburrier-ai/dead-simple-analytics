@@ -18,12 +18,13 @@ def visits(
     site_id: UUID = Query(...),
     days: int = Query(14, ge=1, le=365),
     hours: int | None = Query(None, ge=1, le=168),
+    tz: str | None = Query(None, max_length=64),
 ) -> dict:
     _ = user
     if demo_mode:
         if hours:
-            return demo_fixtures.visits_stats(hours=hours)
-        return demo_fixtures.visits_stats(days=days)
+            return demo_fixtures.visits_stats(hours=hours, tz_name=tz)
+        return demo_fixtures.visits_stats(days=days, tz_name=tz)
     if hours:
-        return service.visits_hours(conn, site_id, hours=hours)
-    return service.visits(conn, site_id, days=days)
+        return service.visits_hours(conn, site_id, hours=hours, tz_name=tz)
+    return service.visits(conn, site_id, days=days, tz_name=tz)

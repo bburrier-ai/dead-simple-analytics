@@ -6,6 +6,7 @@ from sqlalchemy.engine import Connection
 
 from config.settings import settings
 from core.exceptions import ForbiddenError, NotFoundError, RateLimitError
+from core.live import live_hub
 from core.rate_limit import SlidingWindowRateLimiter
 from db.repositories.events import EventsRepository
 from db.repositories.sites import SitesRepository
@@ -72,6 +73,8 @@ class CollectService:
         )
         if not inserted:
             return
+
+        live_hub.publish({"site_id": str(site["id"])})
 
     def _clip(self, value: object | None, max_len: int) -> str:
         text = "" if value is None else str(value)
