@@ -175,13 +175,13 @@
 
   function send(type, trackId, identity) {
     const body = JSON.stringify(payload(type, trackId, identity));
-    if (navigator.sendBeacon) {
-      const blob = new Blob([body], { type: "application/json" });
-      if (navigator.sendBeacon(endpoint, blob)) return;
-    }
+    // text/plain is a "simple" Content-Type: no CORS preflight. application/json
+    // sendBeacon is queued then blocked cross-origin (provisional headers / failed).
+    const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+    if (navigator.sendBeacon && navigator.sendBeacon(endpoint, blob)) return;
     fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body,
       keepalive: true,
       mode: "cors",

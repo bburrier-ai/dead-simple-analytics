@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 
 from config.settings import settings
@@ -51,13 +52,46 @@ def test_collect_options_and_cors(client):
     }
 
     login(client)
-    site_key = create_site(client, allowed_domains=["localhost"]).json()["site_key"]
+    site_key = create_site(
+        client, allowed_domains=["localhost", "beauburrier.com"]
+    ).json()["site_key"]
     posted = collect(client, site_key, "pageview")
     assert posted.status_code == 200
     assert posted.headers.get("access-control-allow-origin") == "*"
     assert "access-control-allow-credentials" not in {
         k.lower() for k in posted.headers.keys()
     }
+
+    # Browser sendBeacon uses text/plain to avoid CORS preflight.
+    plain = client.post(
+        "/collect",
+        content=json.dumps(
+            {
+                "event_id": str(uuid.uuid4()),
+                "site_key": site_key,
+                "type": "pageview",
+                "path": "/",
+                "title": "plain",
+                "session_id": "sess-plain",
+            }
+        ),
+        headers={
+            "Origin": "https://beauburrier.com",
+            "Content-Type": "text/plain;charset=UTF-8",
+        },
+    )
+    assert plain.status_code == 200, plain.text
+    assert plain.headers.get("access-control-allow-origin") == "*"
+
+    bad_json = client.post(
+        "/collect",
+        content="not-json",
+        headers={
+            "Origin": "https://beauburrier.com",
+            "Content-Type": "text/plain;charset=UTF-8",
+        },
+    )
+    assert bad_json.status_code == 422
 
 
 def test_favicon_and_login_html(client):

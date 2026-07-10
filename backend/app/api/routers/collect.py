@@ -1,4 +1,8 @@
+import json
+
 from fastapi import APIRouter, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from app.api.schemas import CollectEvent
 from app.dependencies import DbConn
@@ -9,7 +13,17 @@ service = CollectService()
 
 
 @router.post("/collect")
-def collect(body: CollectEvent, request: Request, conn: DbConn) -> dict:
+async def collect(request: Request, conn: DbConn) -> dict:
+    # Accept application/json and text/plain (sendBeacon-friendly; avoids CORS preflight).
+    raw = await request.body()
+    try:
+        data = json.loads(raw.decode("utf-8") or "null")
+        body = CollectEvent.model_validate(data)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
+        raise RequestValidationError(
+            [{"type": "value_error", "loc": ["body"], "msg": "Invalid collect payload", "input": None}]
+        ) from exc
+
     client_ip = request.client.host if request.client else None
     service.ingest(
         conn,
