@@ -10,7 +10,10 @@ const DSA = (() => {
 
   async function ensureCsrf() {
     if (csrfToken()) return;
-    await fetch("/api/auth/csrf", { credentials: "include" });
+    const res = await fetch("/api/auth/csrf", { credentials: "include" });
+    if (!res.ok) {
+      throw new Error("Could not initialize login session");
+    }
   }
 
   async function request(path, options = {}) {

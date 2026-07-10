@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from alembic.config import Config
+from sqlalchemy import text
 
 from alembic import command
 from config.settings import settings
@@ -24,6 +25,17 @@ def run_migrations() -> None:
 def _seed_admin() -> None:
     auth = AuthService()
     with get_connection() as conn:
+        # Legacy installs renamed email→username but kept admin@example.com as the value.
+        conn.execute(
+            text(
+                """
+                UPDATE users
+                SET username = :username
+                WHERE username = 'admin@example.com'
+                """
+            ),
+            {"username": settings.admin_username},
+        )
         repo = UsersRepository()
         if repo.count(conn) > 0:
             return

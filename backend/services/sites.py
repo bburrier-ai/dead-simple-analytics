@@ -1,3 +1,4 @@
+import json
 import re
 from uuid import UUID
 
@@ -66,6 +67,30 @@ class SitesService:
         base = settings.public_base_url.rstrip("/")
         return (
             f'<script defer src="{base}/dsa.js" data-site="{site_key}"></script>'
+        )
+
+    def curl_for(self, site_key: str, allowed_domains: list[str]) -> str:
+        base = settings.public_base_url.rstrip("/")
+        domain = (allowed_domains or ["example.com"])[0].strip().lower() or "example.com"
+        origin = f"https://{domain}"
+        payload = json.dumps(
+            {
+                "event_id": "$EVENT_ID",
+                "site_key": site_key,
+                "type": "pageview",
+                "path": "/curl-test",
+                "title": "curl test",
+                "session_id": "curl-test",
+            },
+            separators=(",", ":"),
+        )
+        shell_json = payload.replace("\\", "\\\\").replace('"', '\\"')
+        return (
+            "EVENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')\n"
+            f"curl -sS -X POST '{base}/collect' \\\n"
+            "  -H 'Content-Type: application/json' \\\n"
+            f"  -H 'Origin: {origin}' \\\n"
+            f'  -d "{shell_json}"'
         )
 
     def _normalize_domains(self, allowed_domains: list[str]) -> list[str]:
