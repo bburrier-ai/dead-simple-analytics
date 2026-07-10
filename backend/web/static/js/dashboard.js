@@ -50,9 +50,75 @@
 
   function formatDetailLabel(date) {
     if (chartPeriod.unit === "hours") {
-      return d3.utcFormat("%b %d, %I %p")(date);
+      return d3.timeFormat("%b %d, %I %p")(date);
     }
     return d3.utcFormat("%b %d, %Y")(date);
+  }
+
+  function zeroPoint(date) {
+    return { date, pageviews: 0, clicks: 0, hovers: 0, visitors: 0 };
+  }
+
+  /** Ensure the series covers the full selected period through now, including empty buckets. */
+  function padSeriesToPeriod(series) {
+    const byKey = new Map((series || []).map((row) => [row.date, row]));
+    const now = new Date();
+
+    if (chartPeriod.unit === "hours") {
+      const start = new Date(now.getTime() - chartPeriod.value * 3600 * 1000);
+      const cursor = new Date(start);
+      cursor.setMinutes(0, 0, 0);
+      const out = [];
+      for (let t = new Date(cursor); t <= now; t.setHours(t.getHours() + 1)) {
+        const key = new Date(t).toISOString().replace(/\.\d{3}Z$/, "Z");
+        const existing = byKey.get(key);
+        out.push(existing ? { ...zeroPoint(key), ...existing, date: key } : zeroPoint(key));
+      }
+      return out;
+    }
+
+    const out = [];
+    for (let i = chartPeriod.value - 1; i >= 0; i -= 1) {
+      const local = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const key = [
+        local.getFullYear(),
+        String(local.getMonth() + 1).padStart(2, "0"),
+        String(local.getDate()).padStart(2, "0"),
+      ].join("-");
+      const existing = byKey.get(key);
+      out.push(existing ? { ...zeroPoint(key), ...existing, date: key } : zeroPoint(key));
+    }
+    return out;
+  }
+
+  function periodXDomain(data) {
+    const start = data[0].date;
+    const last = data[data.length - 1].date;
+    if (chartPeriod.unit === "hours") {
+      // Snap the right edge to now so the current partial hour is visible.
+      return [start, new Date()];
+    }
+    // Give the last calendar day a full band through end-of-day.
+    return [start, d3.utcDay.offset(last, 1)];
+  }
+
+  function periodTickValues(data, count) {
+    const dates = data.map((d) => d.date);
+    if (dates.length <= count) return dates;
+    const picked = [];
+    for (let i = 0; i < count; i += 1) {
+      const idx = Math.round((i * (dates.length - 1)) / (count - 1));
+      picked.push(dates[idx]);
+    }
+    const seen = new Set();
+    const out = [];
+    for (const date of picked) {
+      const key = +date;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(date);
+    }
+    return out;
   }
 
   function renderChart(series, totals) {
@@ -65,10 +131,11 @@
     const margin = { top: 8, right: 12, bottom: 28, left: 36 };
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
+    const useLocalTime = chartPeriod.unit === "hours";
 
-    const parseDate = parseSeriesDate;
-    const data = series.map((d) => ({
-      date: parseDate(d.date),
+    const padded = padSeriesToPeriod(series);
+    const data = padded.map((d) => ({
+      date: parseSeriesDate(d.date),
       pageviews: d.pageviews,
       clicks: d.clicks,
       hovers: d.hovers || 0,
@@ -83,7 +150,8 @@
 
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const x = d3.scaleUtc().domain(d3.extent(data, (d) => d.date)).range([0, innerW]);
+    const xScale = useLocalTime ? d3.scaleTime() : d3.scaleUtc();
+    const x = xScale.domain(periodXDomain(data)).range([0, innerW]);
     const y = d3
       .scaleLinear()
       .domain([0, d3.max(data, (d) => d.pageviews + d.clicks + d.hovers) * 1.1 || 1])
@@ -121,13 +189,12 @@
       .attr("stroke-width", 1)
       .style("display", "none");
 
-    const xTickFormat =
-      chartPeriod.unit === "hours" ? d3.utcFormat("%I %p") : d3.utcFormat("%b %d");
-    const xTicks = chartPeriod.unit === "hours" ? 8 : 7;
+    const xTickFormat = useLocalTime ? d3.timeFormat("%I %p") : d3.utcFormat("%b %d");
+    const xTicks = useLocalTime ? 8 : 7;
 
     g.append("g")
       .attr("transform", `translate(0,${innerH})`)
-      .call(d3.axisBottom(x).ticks(xTicks).tickFormat(xTickFormat));
+      .call(d3.axisBottom(x).tickValues(periodTickValues(data, xTicks)).tickFormat(xTickFormat));
     g.append("g").call(d3.axisLeft(y).ticks(5));
 
     const detailEl = document.getElementById("visits-chart-detail");
@@ -190,6 +257,48 @@
       });
   }
 
+  let liveSource = null;
+  let liveRefreshTimer = null;
+  const LIVE_REFRESH_MS = 1500;
+
+  function scheduleLiveRefresh(siteId) {
+    if (!siteId || siteId !== activeSiteId) return;
+    if (liveRefreshTimer) clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = setTimeout(async () => {
+      liveRefreshTimer = null;
+      await loadChart();
+      refreshEventsTable();
+    }, LIVE_REFRESH_MS);
+  }
+
+  function stopLiveUpdates() {
+    if (liveRefreshTimer) {
+      clearTimeout(liveRefreshTimer);
+      liveRefreshTimer = null;
+    }
+    if (liveSource) {
+      liveSource.close();
+      liveSource = null;
+    }
+  }
+
+  function startLiveUpdates() {
+    stopLiveUpdates();
+    if (typeof EventSource === "undefined") return;
+    liveSource = new EventSource("/api/events/live");
+    liveSource.addEventListener("event", (msg) => {
+      try {
+        const data = JSON.parse(msg.data);
+        scheduleLiveRefresh(data.site_id);
+      } catch {
+        /* ignore malformed payloads */
+      }
+    });
+    liveSource.onerror = () => {
+      // EventSource reconnects automatically; leave the instance open.
+    };
+  }
+
   function bindControls() {
     document.getElementById("event-search")?.addEventListener("input", () => refreshEventsTable());
     document.getElementById("type-filter")?.addEventListener("change", () => refreshEventsTable());
@@ -213,6 +322,7 @@
     });
 
     window.addEventListener("resize", () => loadChart());
+    window.addEventListener("beforeunload", stopLiveUpdates);
   }
 
   window.initDashboard = async function initDashboard() {
@@ -222,5 +332,6 @@
       await loadChart();
       refreshEventsTable();
     }
+    startLiveUpdates();
   };
 })();

@@ -15,12 +15,32 @@ def test_db_url() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_db(test_db_url: str):
+def setup_db(test_db_url: str, tmp_path_factory):
     settings.database_url = test_db_url
     settings.app_env = "test"
     connection._engine = None
+
+    components = tmp_path_factory.mktemp("components")
+    (components / "ok.txt").write_text("ok", encoding="utf-8")
+    import app.main as main
+
+    main.COMPONENTS_DIR = components
+
     run_migrations()
     yield
+
+
+@pytest.fixture(scope="session")
+def app_client():
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def client(app_client):
+    app_client.cookies.clear()
+    yield app_client
 
 
 @pytest.fixture(autouse=True)
@@ -36,10 +56,3 @@ def clean_event_data():
         conn.execute(text("TRUNCATE events RESTART IDENTITY CASCADE"))
         conn.execute(text("TRUNCATE sites RESTART IDENTITY CASCADE"))
     yield
-
-
-@pytest.fixture
-def client():
-    app = create_app()
-    with TestClient(app) as c:
-        yield c

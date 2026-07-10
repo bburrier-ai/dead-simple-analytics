@@ -1,4 +1,6 @@
 # Dead Simple Analytics
+[![CI](https://github.com/bburrier-ai/dead-simple-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/bburrier-ai/dead-simple-analytics/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/bburrier-ai/dead-simple-analytics/actions/workflows/ci.yml)
 
 Self-hosted analytics for simple interaction tracking - pageviews, clicks, and hovers.
 

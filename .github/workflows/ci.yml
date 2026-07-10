@@ -44,4 +44,6 @@ jobs:
         run: make lint
 
       - name: Test
-        run: cd backend && uv run pytest -v
+        run: cd backend && uv run pytest -v --cov-report=term-missing
+        env:
+          APP_ENV: test

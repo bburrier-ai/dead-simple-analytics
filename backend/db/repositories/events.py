@@ -128,12 +128,13 @@ class EventsRepository:
         *,
         start: datetime,
         end: datetime,
+        tz: str = "UTC",
     ) -> list[dict]:
         rows = conn.execute(
             text(
                 f"""
                 SELECT
-                    date_trunc('hour', occurred_at AT TIME ZONE 'UTC') AS hour,
+                    date_trunc('hour', occurred_at AT TIME ZONE :tz) AT TIME ZONE :tz AS hour,
                     COUNT(*) FILTER (WHERE type = 'pageview') AS pageviews,
                     COUNT(*) FILTER (WHERE type = 'click') AS clicks,
                     COUNT(*) FILTER (WHERE type = 'hover') AS hovers,
@@ -147,7 +148,7 @@ class EventsRepository:
                 ORDER BY 1
                 """
             ),
-            {"site_id": site_id, "start": start, "end": end},
+            {"site_id": site_id, "start": start, "end": end, "tz": tz},
         ).mappings()
         return [dict(r) for r in rows]
 
@@ -158,12 +159,13 @@ class EventsRepository:
         *,
         date_from: str,
         date_to: str,
+        tz: str = "UTC",
     ) -> list[dict]:
         rows = conn.execute(
             text(
                 f"""
                 SELECT
-                    date_trunc('day', occurred_at AT TIME ZONE 'UTC')::date AS day,
+                    date_trunc('day', occurred_at AT TIME ZONE :tz)::date AS day,
                     COUNT(*) FILTER (WHERE type = 'pageview') AS pageviews,
                     COUNT(*) FILTER (WHERE type = 'click') AS clicks,
                     COUNT(*) FILTER (WHERE type = 'hover') AS hovers,
@@ -171,12 +173,12 @@ class EventsRepository:
                         FILTER (WHERE {VISITOR_IDENTITY_SQL} IS NOT NULL) AS visitors
                 FROM events
                 WHERE site_id = :site_id
-                  AND occurred_at >= CAST(:date_from AS timestamptz)
-                  AND occurred_at < CAST(:date_to AS timestamptz) + interval '1 day'
+                  AND occurred_at >= CAST(:date_from AS timestamp) AT TIME ZONE :tz
+                  AND occurred_at < (CAST(:date_to AS date) + 1)::timestamp AT TIME ZONE :tz
                 GROUP BY 1
                 ORDER BY 1
                 """
             ),
-            {"site_id": site_id, "date_from": date_from, "date_to": date_to},
+            {"site_id": site_id, "date_from": date_from, "date_to": date_to, "tz": tz},
         ).mappings()
         return [dict(r) for r in rows]

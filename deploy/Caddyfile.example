@@ -2,6 +2,9 @@
 #   import sites/*
 #
 # Example drop-in: /etc/caddy/sites/stats.example.com.caddy
+# flush_interval -1 keeps SSE (/api/events/live) from being buffered.
 stats.example.com {
-    reverse_proxy localhost:8082
+    reverse_proxy localhost:8082 {
+        flush_interval -1
+    }
 }
