@@ -81,12 +81,25 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def collect_cors(request: Request, call_next):
-        response = await call_next(request)
+        # Collector is called cross-origin from customer sites. Dashboard CORSMiddleware
+        # only allows CORS_ORIGINS, so /collect must handle its own CORS (and must not
+        # send Allow-Credentials with "*").
         if request.url.path == "/collect":
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return response
+            cors_headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "86400",
+            }
+            if request.method == "OPTIONS":
+                return Response(status_code=204, headers=cors_headers)
+            response = await call_next(request)
+            for key, value in cors_headers.items():
+                response.headers[key] = value
+            if "access-control-allow-credentials" in response.headers:
+                del response.headers["access-control-allow-credentials"]
+            return response
+        return await call_next(request)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
