@@ -80,6 +80,22 @@ def test_hash_password_and_seed_when_empty(monkeypatch):
     assert fake.inserted[0]
 
 
+def test_users_repository_insert_returns_row():
+    from uuid import uuid4
+
+    from db.repositories.users import UsersRepository
+
+    user_id = uuid4()
+    conn = MagicMock()
+    result = MagicMock()
+    result.mappings.return_value.one.return_value = {"id": user_id, "username": "admin"}
+    conn.execute.return_value = result
+
+    row = UsersRepository().insert(conn, "admin", "hash")
+    assert row == {"id": user_id, "username": "admin"}
+    conn.execute.assert_called_once()
+
+
 def test_get_engine_pool_size_outside_test(monkeypatch):
     from sqlalchemy.pool import NullPool
 

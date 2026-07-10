@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
 
 from app.api.schemas import CollectEvent
 from app.dependencies import DbConn
@@ -20,8 +20,3 @@ def collect(body: CollectEvent, request: Request, conn: DbConn) -> dict:
         referer=request.headers.get("referer"),
     )
     return {"ok": True}
-
-
-@router.options("/collect")
-def collect_options() -> Response:
-    return Response(status_code=204)
