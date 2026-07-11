@@ -21,7 +21,14 @@ async def collect(request: Request, conn: DbConn) -> dict:
         body = CollectEvent.model_validate(data)
     except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
         raise RequestValidationError(
-            [{"type": "value_error", "loc": ["body"], "msg": "Invalid collect payload", "input": None}]
+            [
+                {
+                    "type": "value_error",
+                    "loc": ["body"],
+                    "msg": "Invalid collect payload",
+                    "input": None,
+                }
+            ]
         ) from exc
 
     client_ip = request.client.host if request.client else None
