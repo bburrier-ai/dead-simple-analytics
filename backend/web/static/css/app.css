@@ -209,12 +209,12 @@ select {
 .period-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.2rem;
 }
 
 .period-pill {
   font-size: 0.75rem;
-  padding: 0.35rem 0.65rem;
+  padding: 0.35rem 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
@@ -228,9 +228,10 @@ select {
 
 /* -- Chart -- */
 .chart-card {
-  padding: 0.75rem 0.75rem 0.5rem;
+  padding: 0.75rem 0.75rem 0;
   margin-bottom: 1rem;
   position: relative;
+  overflow: hidden;
 }
 
 .chart-card h2 {
@@ -278,17 +279,22 @@ select {
 
 .chart-plot {
   border-radius: var(--radius-sm);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 #visits-chart {
   width: 100%;
+  max-width: 100%;
   height: 220px;
+  overflow: hidden;
 }
 
 #visits-chart svg {
   display: block;
   width: 100%;
   height: 100%;
+  max-width: 100%;
 }
 
 #visits-chart .chart-focus-line {
@@ -312,37 +318,44 @@ select {
 }
 
 .chart-hover-detail {
-  margin: 0;
-  padding: 1rem 2rem;
+  margin: 0.5rem -0.75rem 0;
+  padding: 0.55rem 0.75rem;
   min-height: 1.25rem;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--color-text-muted);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem 1.25rem;
-  position: absolute;
-  right: 0;
-  top: 0;
+  gap: 0.45rem 0.85rem;
+  background: var(--color-footer-bg);
+  overflow: hidden;
 }
 
 .chart-detail-label {
   font-weight: bold;
   color: var(--color-text);
   flex-shrink: 0;
+  line-height: 1.3;
 }
 
 .chart-detail-metrics {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.45rem 0.6rem;
+  min-width: 0;
 }
 
 .chart-detail-metric {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.chart-detail-metric.bold {
+  color: var(--color-text);
 }
 
 .chart-detail-dot {
@@ -367,6 +380,31 @@ select {
 
 .chart-detail-dot--visitor {
   background: var(--color-accent);
+}
+
+@media (max-width: 720px) {
+  .chart-hover-detail {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem 0.6rem;
+  }
+
+  .chart-detail-metrics {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.45rem 0.75rem;
+    width: 100%;
+    font-size: 0.65rem;
+  }
+
+  .chart-detail-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+  }
 }
 
 /* -- Event table -- */
@@ -412,9 +450,12 @@ select {
 }
 
 .data-table td {
-  padding: 0.35rem 0.25rem;
+  padding: 0.3rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .data-table tbody tr:last-child td {
@@ -661,6 +702,32 @@ body.has-demo-footer {
   .demo-mode-footer-inner {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .table-card {
+    padding: 0.25rem;
+  }
+
+  .data-table {
+    font-size: 0.6rem;
+  }
+
+  .data-table th {
+    font-size: 0.6rem;
+    padding: 0.3rem 0.35rem 0.25rem;
+  }
+
+  .data-table td {
+    padding: 0.2rem 0.25rem;
+  }
+
+  .data-table .mono {
+    font-size: 0.6rem;
+  }
+
+  .badge {
+    font-size: 0.55rem;
+    padding: 0.1rem 0.3rem;
   }
 }
 

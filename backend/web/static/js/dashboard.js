@@ -5,6 +5,17 @@
   let activeSiteId = null;
   let chartPeriod = { unit: "days", value: 14 };
 
+  function formatCompactMetric(value) {
+    const n = Number(value) || 0;
+    if (n < 1000) return String(n);
+    if (n < 1_000_000) {
+      const k = Math.round((n / 1000) * 10) / 10;
+      return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+    }
+    const m = Math.round((n / 1_000_000) * 10) / 10;
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}m`;
+  }
+
   function setChartDetail(detailEl, label, metrics) {
     if (!detailEl) return;
     detailEl.innerHTML = `
@@ -12,18 +23,22 @@
       <span class="chart-detail-metrics">
         <span class="chart-detail-metric">
           <i class="chart-detail-dot chart-detail-dot--pageview" aria-hidden="true"></i>
-          ${metrics.pageviews} pageviews
+          <span class="chart-detail-metric-value">${formatCompactMetric(metrics.pageviews)}</span>
+          <span class="chart-detail-metric-name">views</span>
         </span>
         <span class="chart-detail-metric">
           <i class="chart-detail-dot chart-detail-dot--click" aria-hidden="true"></i>
-          ${metrics.clicks} clicks
+          <span class="chart-detail-metric-value">${formatCompactMetric(metrics.clicks)}</span>
+          <span class="chart-detail-metric-name">clicks</span>
         </span>
         <span class="chart-detail-metric">
           <i class="chart-detail-dot chart-detail-dot--hover" aria-hidden="true"></i>
-          ${metrics.hovers} hovers
+          <span class="chart-detail-metric-value">${formatCompactMetric(metrics.hovers)}</span>
+          <span class="chart-detail-metric-name">hovers</span>
         </span>
         <span class="chart-detail-metric bold">
-          ${metrics.visitors} visitors
+          <span class="chart-detail-metric-value">${formatCompactMetric(metrics.visitors)}</span>
+          <span class="chart-detail-metric-name">visitors</span>
         </span>
       </span>
     `;
@@ -128,7 +143,12 @@
     container.innerHTML = "";
     const width = container.clientWidth || 800;
     const height = 220;
-    const margin = { top: 8, right: 12, bottom: 28, left: 36 };
+    const margin = {
+      top: 8,
+      right: width < 480 ? 8 : 12,
+      bottom: 28,
+      left: width < 480 ? 28 : 36,
+    };
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
     const useLocalTime = chartPeriod.unit === "hours";
@@ -190,12 +210,12 @@
       .style("display", "none");
 
     const xTickFormat = useLocalTime ? d3.timeFormat("%I %p") : d3.utcFormat("%b %d");
-    const xTicks = useLocalTime ? 8 : 7;
+    const xTicks = width < 480 ? 4 : useLocalTime ? 8 : 7;
 
     g.append("g")
       .attr("transform", `translate(0,${innerH})`)
       .call(d3.axisBottom(x).tickValues(periodTickValues(data, xTicks)).tickFormat(xTickFormat));
-    g.append("g").call(d3.axisLeft(y).ticks(5));
+    g.append("g").call(d3.axisLeft(y).ticks(width < 480 ? 4 : 5));
 
     const detailEl = document.getElementById("visits-chart-detail");
     const periodLabel = periodTotalLabel();

@@ -14,6 +14,12 @@ router = APIRouter(prefix="/partials", tags=["partials"])
 events_service = EventsService()
 sites_service = SitesService()
 
+_EVENT_TYPE_LABELS = {
+    "pageview": "view",
+    "click": "click",
+    "hover": "hover",
+}
+
 
 def _format_time(iso: str) -> str:
     try:
@@ -79,7 +85,7 @@ def events_table(
         out.append(
             f"""<tr>
           <td class="mono">{_format_time(e["occurred_at"])}</td>
-          <td><span class="badge badge-{esc(e["type"])}">{esc(e["type"])}</span></td>
+          <td><span class="badge badge-{esc(e["type"])}">{esc(_EVENT_TYPE_LABELS.get(e["type"], e["type"]))}</span></td>
           <td class="mono">{esc(e.get("path") or "")}</td>
           <td class="mono text-muted">{track}</td>
           <td class="mono text-muted" title="{corr}">{corr_display}</td>
