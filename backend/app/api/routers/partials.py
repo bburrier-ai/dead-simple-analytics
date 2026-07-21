@@ -82,10 +82,12 @@ def events_table(
         ref_display = referrer if len(referrer) <= 28 else referrer[:28] + "…"
         corr = esc(e.get("session_id") or "-")
         corr_display = corr if len(corr) <= 12 else corr[:12] + "…"
+        event_type = esc(e["type"])
+        event_label = esc(_EVENT_TYPE_LABELS.get(e["type"], e["type"]))
         out.append(
             f"""<tr>
           <td class="mono">{_format_time(e["occurred_at"])}</td>
-          <td><span class="badge badge-{esc(e["type"])}">{esc(_EVENT_TYPE_LABELS.get(e["type"], e["type"]))}</span></td>
+          <td><span class="badge badge-{event_type}">{event_label}</span></td>
           <td class="mono">{esc(e.get("path") or "")}</td>
           <td class="mono text-muted">{track}</td>
           <td class="mono text-muted" title="{corr}">{corr_display}</td>
