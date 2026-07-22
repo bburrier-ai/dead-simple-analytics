@@ -8,7 +8,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dsa}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dsa} -d ${POSTGRES_DB:-dead_simple_analytics}"]
       interval: 5s
       timeout: 5s
       retries: 5
