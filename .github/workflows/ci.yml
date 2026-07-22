@@ -47,3 +47,6 @@ jobs:
         run: cd backend && uv run pytest -v --cov-report=term-missing
         env:
           APP_ENV: test
+
+      - name: Test deployment watchdog
+        run: make test-watchdog

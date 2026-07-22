@@ -23,6 +23,17 @@ http://localhost:8082/login
 make install DOMAIN=analytics.example.com
 ```
 
+For an existing production checkout, `deploy/watchdog.sh` can safely apply
+fast-forward updates without rerunning the installer or changing `.env` or
+Caddy. Install exactly one scheduler entry for the deploy user:
+
+```cron
+*/5 * * * * /usr/bin/bash /opt/apps/dead-simple-analytics/deploy/watchdog.sh
+```
+
+The watchdog is silent when `master` is current. It stops with an actionable
+error instead of discarding commits when local history cannot fast-forward.
+
 ## Track
 
 1. Log in → **Sites** → add your site (name + allowed domains)

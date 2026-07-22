@@ -14,7 +14,7 @@ USERNAME ?= admin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help docker-check up down status logs sync lint format test test-unit ci test-up test-down db install
+.PHONY: help docker-check up down status logs sync lint format test test-unit test-watchdog ci test-up test-down db install
 
 help:
 	@echo "Dead Simple Analytics - available targets:"
@@ -32,6 +32,7 @@ help:
 	@echo ""
 	@echo "  make test            Run backend tests (unit+integration, 100% coverage gate)"
 	@echo "  make test-unit       Run unit tests only"
+	@echo "  make test-watchdog   Run deployment watchdog tests"
 	@echo "  make ci              lint + test"
 	@echo "  make test-up         Start test Postgres on :5434"
 	@echo "  make test-down       Stop test Postgres"
@@ -79,7 +80,10 @@ test: test-up
 test-unit:
 	cd $(BACKEND_DIR) && uv run pytest tests/unit -v
 
-ci: lint test
+test-watchdog:
+	bash deploy/test_watchdog.sh
+
+ci: lint test test-watchdog
 
 install:
 	@if [ -z "$(DOMAIN)" ]; then \
