@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-/opt/apps/dead-simple-analytics}"
 APP_DOMAIN="${APP_DOMAIN:-stats.bburrier.com}"
 STATE_DIR="${STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/dead-simple-analytics}"
-LOCK_FILE="${LOCK_FILE:-${STATE_DIR}/watchdog.lock}"
-FAILURE_LOG="${STATE_DIR}/failures.log"
 HEALTH_RETRIES="${HEALTH_RETRIES:-6}"
 HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-3}"
 readonly MAX_HEALTH_RETRIES=6
@@ -15,20 +14,17 @@ readonly CURL_MAX_TIME=8
 readonly DNS_TIMEOUT=5
 readonly TCP_TIMEOUT=3
 
-prepare_state_dir() {
-  if [[ -L "$STATE_DIR" ]] \
-    || ! (umask 077; mkdir -p -- "$STATE_DIR") \
-    || [[ ! -d "$STATE_DIR" ]] \
-    || [[ "$(stat -c '%u' "$STATE_DIR" 2>/dev/null || true)" != "$(id -u)" ]]; then
-    printf 'DSA watchdog failed: state directory is not a private owned directory: %s\n' \
-      "$STATE_DIR" >&2
+if [[ "${DSA_WATCHDOG_MANAGED:-}" != 1 ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf 'DSA watchdog failed: required command missing: python3\n' >&2
     exit 1
   fi
-  chmod 700 "$STATE_DIR" || {
-    printf 'DSA watchdog failed: cannot secure state directory: %s\n' "$STATE_DIR" >&2
-    exit 1
-  }
-}
+  exec python3 "$SCRIPT_DIR/watchdog_state.py" "$STATE_DIR" /bin/bash "$0" "$@"
+fi
+
+WATCHDOG_EVIDENCE_PATH="${DSA_WATCHDOG_EVIDENCE_PATH:-}"
+unset DSA_WATCHDOG_EVIDENCE_PATH
+readonly WATCHDOG_EVIDENCE_PATH
 
 bound_runtime_settings() {
   if [[ ! "$HEALTH_RETRIES" =~ ^[1-9][0-9]*$ ]] \
@@ -46,28 +42,12 @@ bound_runtime_settings() {
 fail() {
   local timestamp
   local message
-  local line_count
-  local temp_log
 
   timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   message="DSA watchdog failed at ${timestamp}: $1"
   printf '%s\n' "$message" >&2
-
-  if (umask 077; printf '%s\n' "$message" >>"$FAILURE_LOG") 2>/dev/null; then
-    chmod 600 "$FAILURE_LOG" 2>/dev/null || true
-    line_count="$(wc -l <"$FAILURE_LOG" 2>/dev/null || printf '0')"
-    if (( line_count > 1000 )); then
-      temp_log="$(mktemp "${FAILURE_LOG}.XXXXXX" 2>/dev/null || true)"
-      if [[ -n "$temp_log" ]]; then
-        if tail -n 1000 "$FAILURE_LOG" >"$temp_log" \
-          && chmod 600 "$temp_log" \
-          && mv -f "$temp_log" "$FAILURE_LOG"; then
-          :
-        else
-          rm -f "$temp_log"
-        fi
-      fi
-    fi
+  if [[ -n "$WATCHDOG_EVIDENCE_PATH" ]]; then
+    printf '%s\n' "$message" >>"$WATCHDOG_EVIDENCE_PATH" || true
   fi
 
   exit 1
@@ -138,15 +118,11 @@ check_layers() {
   check_http_status "api_route" 401 "${public_url%/}/api/sites"
 }
 
-prepare_state_dir
 bound_runtime_settings
 
-for command in git make curl flock getent nc timeout; do
+for command in git make curl getent nc timeout; do
   command -v "$command" >/dev/null 2>&1 || fail "required command missing: $command"
 done
-
-exec 9>"$LOCK_FILE"
-flock -n 9 || exit 0
 
 cd "$REPO_DIR" || fail "repository is unavailable: $REPO_DIR"
 [[ -d .git ]] || fail "Git repository missing: $REPO_DIR"
