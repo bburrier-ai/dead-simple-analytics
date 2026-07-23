@@ -23,3 +23,20 @@ def test_postgres_healthcheck_targets_configured_database(compose_name: str) -> 
         f"{compose_name} healthcheck does not target configured database "
         f"{configured_database!r}: {healthcheck_line}"
     )
+
+
+def test_production_services_restart_unless_stopped() -> None:
+    """Production services must recover after crashes and Docker daemon restarts."""
+    lines = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8").splitlines()
+
+    for service in ("postgres", "backend"):
+        service_index = lines.index(f"  {service}:")
+        service_lines = []
+        for line in lines[service_index + 1 :]:
+            if line.startswith("  ") and not line.startswith("    "):
+                break
+            service_lines.append(line.strip())
+
+        assert "restart: unless-stopped" in service_lines, (
+            f"{service} must use restart: unless-stopped in docker-compose.yml"
+        )
