@@ -31,8 +31,16 @@ Caddy. Install exactly one scheduler entry for the deploy user:
 */5 * * * * /usr/bin/bash /opt/apps/dead-simple-analytics/deploy/watchdog.sh
 ```
 
-The watchdog is silent when `master` is current. It stops with an actionable
-error instead of discarding commits when local history cannot fast-forward.
+The watchdog is silent when `master` is current and all checks pass. Every run
+checks DNS, TCP ports 80/443, the loopback app health/readiness endpoints, the
+public HTTPS login/health endpoints, and an expected unauthenticated API
+response. Failures are classified, timestamped in UTC, emitted to stderr, and
+retained in the deploy user's private
+`~/.local/state/dead-simple-analytics/failures.log` (directory mode 0700, file
+mode 0600, newest 1000 lines). Layer checks have a worst-case runtime under two
+minutes, safely below the five-minute scheduler interval. The watchdog stops
+with an actionable error instead of discarding commits when local history
+cannot fast-forward. Set `STATE_DIR` to override the private state directory.
 
 ## Track
 

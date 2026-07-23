@@ -2,25 +2,87 @@
 set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-/opt/apps/dead-simple-analytics}"
-LOCK_FILE="${LOCK_FILE:-/tmp/dsa-watchdog.lock}"
 APP_DOMAIN="${APP_DOMAIN:-stats.bburrier.com}"
-HEALTH_RETRIES="${HEALTH_RETRIES:-12}"
-HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-5}"
+STATE_DIR="${STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/dead-simple-analytics}"
+LOCK_FILE="${LOCK_FILE:-${STATE_DIR}/watchdog.lock}"
+FAILURE_LOG="${STATE_DIR}/failures.log"
+HEALTH_RETRIES="${HEALTH_RETRIES:-6}"
+HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-3}"
+readonly MAX_HEALTH_RETRIES=6
+readonly MAX_HEALTH_RETRY_DELAY=3
+readonly CURL_CONNECT_TIMEOUT=3
+readonly CURL_MAX_TIME=8
+readonly DNS_TIMEOUT=5
+readonly TCP_TIMEOUT=3
+
+prepare_state_dir() {
+  if [[ -L "$STATE_DIR" ]] \
+    || ! (umask 077; mkdir -p -- "$STATE_DIR") \
+    || [[ ! -d "$STATE_DIR" ]] \
+    || [[ "$(stat -c '%u' "$STATE_DIR" 2>/dev/null || true)" != "$(id -u)" ]]; then
+    printf 'DSA watchdog failed: state directory is not a private owned directory: %s\n' \
+      "$STATE_DIR" >&2
+    exit 1
+  fi
+  chmod 700 "$STATE_DIR" || {
+    printf 'DSA watchdog failed: cannot secure state directory: %s\n' "$STATE_DIR" >&2
+    exit 1
+  }
+}
+
+bound_runtime_settings() {
+  if [[ ! "$HEALTH_RETRIES" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "$HEALTH_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
+    fail "health retry settings must be non-negative integers with at least one retry"
+  fi
+  if (( HEALTH_RETRIES > MAX_HEALTH_RETRIES )); then
+    HEALTH_RETRIES="$MAX_HEALTH_RETRIES"
+  fi
+  if (( HEALTH_RETRY_DELAY > MAX_HEALTH_RETRY_DELAY )); then
+    HEALTH_RETRY_DELAY="$MAX_HEALTH_RETRY_DELAY"
+  fi
+}
 
 fail() {
-  printf 'DSA watchdog failed: %s\n' "$1" >&2
+  local timestamp
+  local message
+  local line_count
+  local temp_log
+
+  timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  message="DSA watchdog failed at ${timestamp}: $1"
+  printf '%s\n' "$message" >&2
+
+  if (umask 077; printf '%s\n' "$message" >>"$FAILURE_LOG") 2>/dev/null; then
+    chmod 600 "$FAILURE_LOG" 2>/dev/null || true
+    line_count="$(wc -l <"$FAILURE_LOG" 2>/dev/null || printf '0')"
+    if (( line_count > 1000 )); then
+      temp_log="$(mktemp "${FAILURE_LOG}.XXXXXX" 2>/dev/null || true)"
+      if [[ -n "$temp_log" ]]; then
+        if tail -n 1000 "$FAILURE_LOG" >"$temp_log" \
+          && chmod 600 "$temp_log" \
+          && mv -f "$temp_log" "$FAILURE_LOG"; then
+          :
+        else
+          rm -f "$temp_log"
+        fi
+      fi
+    fi
+  fi
+
   exit 1
 }
 
 check_health() {
   local label="$1"
   local url="$2"
+  local expected_status="${3:-ok}"
   local response
   local attempt
 
   for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
-    if response="$(curl -fsS --connect-timeout 5 --max-time 15 "$url" 2>/dev/null)" \
-      && [[ "$response" == *'"status":"ok"'* ]]; then
+    if response="$(curl -fsS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" "$url" 2>/dev/null)" \
+      && [[ "$response" == *"\"status\":\"${expected_status}\""* ]]; then
       return 0
     fi
     if (( attempt < HEALTH_RETRIES )); then
@@ -31,7 +93,55 @@ check_health() {
   fail "$label health check failed after $HEALTH_RETRIES attempts: $url"
 }
 
-for command in git make curl flock; do
+check_http_status() {
+  local label="$1"
+  local expected_status="$2"
+  local url="$3"
+  local response
+  local attempt
+
+  for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
+    if response="$(curl -sS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)" \
+      && [[ "$response" == "$expected_status" ]]; then
+      return 0
+    fi
+    if (( attempt < HEALTH_RETRIES )); then
+      sleep "$HEALTH_RETRY_DELAY"
+    fi
+  done
+
+  fail "$label expected HTTP $expected_status after $HEALTH_RETRIES attempts: $url"
+}
+
+check_dns() {
+  timeout "$DNS_TIMEOUT" getent ahostsv4 "$APP_DOMAIN" >/dev/null 2>&1 \
+    || fail "dns lookup failed: $APP_DOMAIN"
+}
+
+check_tcp() {
+  local port="$1"
+  nc -z -w "$TCP_TIMEOUT" "$APP_DOMAIN" "$port" >/dev/null 2>&1 \
+    || fail "tcp_${port} connection failed: $APP_DOMAIN:$port"
+}
+
+check_layers() {
+  local host_port="${DSA_HOST_PORT:-8082}"
+  local public_url="${PUBLIC_BASE_URL:-https://${APP_DOMAIN}}"
+
+  check_dns
+  check_tcp 80
+  check_tcp 443
+  check_health "app_health" "http://127.0.0.1:${host_port}/api/healthz"
+  check_health "api_readiness" "http://127.0.0.1:${host_port}/api/readyz" ready
+  check_http_status "proxy" 200 "${public_url%/}/login"
+  check_health "public_health" "${public_url%/}/api/healthz"
+  check_http_status "api_route" 401 "${public_url%/}/api/sites"
+}
+
+prepare_state_dir
+bound_runtime_settings
+
+for command in git make curl flock getent nc timeout; do
   command -v "$command" >/dev/null 2>&1 || fail "required command missing: $command"
 done
 
@@ -56,7 +166,10 @@ fi
 
 local_sha="$(git rev-parse HEAD)" || fail "cannot resolve local HEAD"
 remote_sha="$(git rev-parse origin/master)" || fail "cannot resolve origin/master"
-[[ "$local_sha" == "$remote_sha" ]] && exit 0
+if [[ "$local_sha" == "$remote_sha" ]]; then
+  check_layers
+  exit 0
+fi
 
 if ! git merge-base --is-ancestor "$local_sha" "$remote_sha"; then
   fail "local master $local_sha cannot fast-forward to origin/master $remote_sha; reconcile manually"
@@ -69,9 +182,6 @@ if ! make up >/dev/null 2>&1; then
   fail "make up returned nonzero at $remote_sha"
 fi
 
-host_port="${DSA_HOST_PORT:-8082}"
-public_url="${PUBLIC_BASE_URL:-https://${APP_DOMAIN}}"
-check_health "local" "http://127.0.0.1:${host_port}/api/healthz"
-check_health "public" "${public_url%/}/api/healthz"
+check_layers
 
 printf 'DSA watchdog deployed %s -> %s successfully\n' "$local_sha" "$remote_sha"
