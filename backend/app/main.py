@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -67,6 +68,16 @@ def create_app() -> FastAPI:
     @app.exception_handler(UnauthorizedError)
     async def unauthorized_handler(_request: Request, exc: UnauthorizedError):
         return JSONResponse(status_code=401, content={"detail": exc.message})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
+        # Never leak schema/validation details on the login endpoint.
+        if request.url.path.rstrip("/") == "/api/auth/login":
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid username or password"},
+            )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.middleware("http")
     async def csrf_guard(request: Request, call_next):

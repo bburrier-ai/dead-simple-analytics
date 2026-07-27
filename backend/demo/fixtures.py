@@ -410,6 +410,7 @@ def list_events(
             or needle in (row.get("visitor_id") or "").lower()
             or needle in (row.get("session_id") or "").lower()
             or needle in (row.get("city") or "").lower()
+            or needle in (row.get("country") or "").lower()
         ]
 
     reverse = order.lower() != "asc"

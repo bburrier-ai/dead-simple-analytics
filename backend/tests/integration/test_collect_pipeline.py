@@ -16,6 +16,7 @@ def test_ingestion_propagates_to_api_and_ui(client):
         ("pageview", None),
         ("hover", "cta-test"),
         ("click", "cta-test"),
+        ("custom", "newsletter"),
     ]:
         res = collect(client, site_key, event_type, track_id=track_id)
         assert res.status_code == 200, res.text
@@ -24,11 +25,14 @@ def test_ingestion_propagates_to_api_and_ui(client):
     events_res = client.get(f"/api/events?site_id={site_id}&limit=10")
     assert events_res.status_code == 200
     data = events_res.json()
-    assert data["total"] == 3
-    assert len(data["items"]) == 3
+    assert data["total"] == 4
+    assert len(data["items"]) == 4
 
     types = {item["type"] for item in data["items"]}
-    assert types == {"pageview", "hover", "click"}
+    assert types == {"pageview", "hover", "click", "custom"}
+
+    custom = next(item for item in data["items"] if item["type"] == "custom")
+    assert custom["track_id"] == "newsletter"
 
     for item in data["items"]:
         assert item["session_id"] == "test-sess-001"
@@ -48,7 +52,9 @@ def test_ingestion_propagates_to_api_and_ui(client):
     assert "pageview" in html
     assert "hover" in html
     assert "click" in html
+    assert "custom" in html
     assert "cta-test" in html
+    assert "newsletter" in html
     assert "test-sess" in html
 
 

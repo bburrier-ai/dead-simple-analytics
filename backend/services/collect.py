@@ -1,4 +1,5 @@
 import hashlib
+import re
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from db.repositories.sites import SitesRepository
 
 _collect_ip_limiter = SlidingWindowRateLimiter()
 _collect_site_limiter = SlidingWindowRateLimiter()
+_TRACK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
 
 class CollectService:
@@ -43,7 +45,7 @@ class CollectService:
         self._rate_limit(site_key, ip_hash)
 
         event_type = (payload.get("type") or "").strip()
-        if event_type not in {"pageview", "click", "hover"}:
+        if event_type not in {"pageview", "click", "hover", "custom"}:
             raise ForbiddenError("Invalid event type")
 
         event_id = self._normalize_event_id(payload.get("event_id"))
@@ -59,7 +61,7 @@ class CollectService:
                 "type": event_type,
                 "path": self._clip(payload.get("path"), 512),
                 "title": self._clip(payload.get("title"), 512),
-                "track_id": self._clip(payload.get("track_id"), 128) or None,
+                "track_id": self._normalize_track_id(payload.get("track_id")),
                 "referrer": self._clip(payload.get("referrer"), 1024) or None,
                 "visitor_id": visitor_id,
                 "visitor_hash": visitor_hash,
@@ -86,6 +88,12 @@ class CollectService:
             return str(UUID(raw))
         except ValueError as exc:
             raise ForbiddenError("Invalid event_id") from exc
+
+    def _normalize_track_id(self, value: object | None) -> str | None:
+        raw = self._clip(value, 128)
+        if not raw or not _TRACK_ID_RE.fullmatch(raw):
+            return None
+        return raw
 
     def _normalize_visitor_hash(self, value: object | None) -> str | None:
         raw = self._clip(value, 64).lower()

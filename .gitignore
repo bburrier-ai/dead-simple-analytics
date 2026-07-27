@@ -11,6 +11,5 @@ coverage.json
 htmlcov/
 backups/
 
-# Internal / local-only - never commit to public repos
 SPEC.md
 mockup/

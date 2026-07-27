@@ -38,15 +38,15 @@
         </form>
       </div>
 
-      <div class="data-table-wrap card table-card">
-        <table class="data-table">
+      <div class="data-table-wrap card table-card sites-table-card">
+        <table class="data-table sites-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Domains</th>
-              <th>Site key</th>
-              <th>Actions</th>
-              <th></th>
+              <th class="site-col-name">Name</th>
+              <th class="site-col-domains">Domains</th>
+              <th class="site-col-key">Site key</th>
+              <th class="site-col-actions"></th>
+              <th class="site-col-edit"></th>
             </tr>
           </thead>
           <tbody id="sites-body"></tbody>
@@ -55,9 +55,14 @@
 
       <div class="card" style="margin-top:1.5rem;padding:1rem">
         <h2 style="margin:0 0 0.75rem;font-size:0.95rem">Tracking</h2>
-        <p style="margin:0;font-size:0.85rem;color:var(--color-text-muted)">
+        <p style="margin:0 0 0.75rem;font-size:0.85rem;color:var(--color-text-muted)">
           Tag interactive elements with <code>data-track-id="cta-signup"</code> to record
           <strong>clicks</strong> and first <strong>hover</strong> per element per page load.
+        </p>
+        <p style="margin:0;font-size:0.85rem;color:var(--color-text-muted)">
+          Campaign links: add <code>data-track-param="t"</code> to the snippet (the param is
+          stripped from the URL after capture), or call
+          <code>DSA.send({ track_id: "newsletter" })</code>.
         </p>
       </div>
     </main>

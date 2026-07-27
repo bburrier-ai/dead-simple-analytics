@@ -39,8 +39,10 @@ def csrf(response: Response) -> dict:
 def login(body: LoginRequest, request: Request, response: Response, conn: DbConn) -> dict:
     validate_csrf(request)
     _check_login_rate_limit(request)
-    user = UsersRepository().get_by_username(conn, body.username)
-    if not user or not auth.verify_password(body.password, user["password_hash"]):
+    username = (body.username or "").strip()
+    password = body.password or ""
+    user = UsersRepository().get_by_username(conn, username) if username and password else None
+    if not user or not auth.verify_password(password, user["password_hash"]):
         raise UnauthorizedError("Invalid username or password")
     token = auth.create_token(user["id"])
     response.set_cookie(

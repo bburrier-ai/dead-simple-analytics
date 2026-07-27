@@ -125,8 +125,10 @@ def test_partials_sites_and_empty_events(client):
     login(client)
     create_site(client)
     sites_html = client.get("/partials/sites-table").text
-    assert "Test w/curl" in sites_html
     assert "data-curl-test=" in sites_html
+    assert "data-site-menu" in sites_html
+    assert "site-summary-mobile" in sites_html
+    assert "data-copy-snippet=" in sites_html
 
     site_id = client.get("/api/sites").json()["items"][0]["id"]
     empty = client.get(f"/partials/events-table?site_id={site_id}").text
@@ -158,6 +160,14 @@ def test_events_filter_query_and_type(client):
         f"/partials/events-table?site_id={site['id']}&type=click&q=cta&sort=path&order=asc"
     ).text
     assert "click" in html
+    assert 'data-field="path"' in html
+    assert 'data-value="/pricing"' in html
+    assert 'data-filter="q"' in html
+    assert 'data-field="type"' in html
+    assert 'data-value="click"' in html
+    assert 'data-filter="type"' in html
+    assert 'data-field="track_id"' in html
+    assert 'data-value="cta-signup"' in html
 
 
 def test_get_site_and_stats_hours(client):
@@ -203,7 +213,8 @@ def test_demo_mode_blocks_site_writes_and_serves_demo_get(client):
         )
         assert patch.status_code == 403
 
-        assert "Test w/curl" in client.get("/partials/sites-table").text
+        assert "data-curl-test=" in client.get("/partials/sites-table").text
+        assert "data-site-menu" in client.get("/partials/sites-table").text
         assert client.get(f"/api/stats/visits?site_id={demo_id}&days=7").status_code == 200
         assert client.get(f"/api/stats/visits?site_id={demo_id}&hours=24").status_code == 200
     finally:

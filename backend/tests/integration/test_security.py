@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from config.settings import settings
@@ -61,3 +62,26 @@ def test_login_requires_csrf(client):
         headers={"X-CSRF-Token": "invalid-token"},
     )
     assert res.status_code == 403
+
+
+def test_login_failures_are_generic(client):
+    ensure_csrf(client)
+    for payload in (
+        {"username": "admin", "password": "admin"},
+        {"username": "admin", "password": "wrong-password"},
+        {"username": "", "password": ""},
+        {"password": "anything"},
+        "not-an-object",
+    ):
+        res = client.post(
+            "/api/auth/login",
+            json=payload,
+            headers=csrf_headers(client),
+        )
+        assert res.status_code == 401, payload
+        assert res.json() == {"detail": "Invalid username or password"}
+        blob = json.dumps(res.json()).lower()
+        assert "character" not in blob
+        assert "min_length" not in blob
+        assert "string_too_short" not in blob
+        assert "loc" not in blob

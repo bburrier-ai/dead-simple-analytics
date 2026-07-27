@@ -16,6 +16,28 @@ const DSA = (() => {
     }
   }
 
+  function errorMessage(detail, fallback) {
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+      const parts = detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object" && typeof item.msg === "string") {
+            return item.msg;
+          }
+          return "";
+        })
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (parts.length) return parts.join("; ");
+    }
+    if (detail && typeof detail === "object" && typeof detail.msg === "string") {
+      const msg = detail.msg.trim();
+      if (msg) return msg;
+    }
+    return fallback || "Request failed";
+  }
+
   async function request(path, options = {}) {
     const method = (options.method || "GET").toUpperCase();
     if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
@@ -40,11 +62,11 @@ const DSA = (() => {
       let detail = res.statusText;
       try {
         const data = await res.json();
-        detail = data.detail || detail;
+        detail = errorMessage(data.detail, detail);
       } catch {
         /* ignore */
       }
-      throw new Error(detail);
+      throw new Error(typeof detail === "string" ? detail : "Request failed");
     }
     if (res.status === 204) return null;
     return res.json();

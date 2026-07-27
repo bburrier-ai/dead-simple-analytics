@@ -4,8 +4,10 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(min_length=1)
-    password: str = Field(min_length=8)
+    # No password-policy constraints here: login must not leak internal requirements
+    # to unauthenticated clients (e.g. min length). Policy is enforced when setting passwords.
+    username: str = ""
+    password: str = ""
 
 
 class UserResponse(BaseModel):

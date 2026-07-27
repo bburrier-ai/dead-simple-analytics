@@ -193,11 +193,52 @@
     return el ? el.getAttribute("data-track-id") : null;
   }
 
+  function trackIdFromPayload(payload) {
+    if (!payload || typeof payload !== "object") return null;
+    if (payload.track_id == null) return null;
+    const trimmed = String(payload.track_id).trim();
+    return trimmed || null;
+  }
+
+  function trackParamName() {
+    return (script.getAttribute("data-track-param") || "").trim();
+  }
+
+  function readAndStripTrackParam() {
+    const param = trackParamName();
+    if (!param) return null;
+    try {
+      const url = new URL(location.href);
+      if (!url.searchParams.has(param)) return null;
+      const value = url.searchParams.get(param);
+      url.searchParams.delete(param);
+      const search = url.searchParams.toString();
+      const next = url.pathname + (search ? "?" + search : "") + url.hash;
+      history.replaceState(history.state, "", next);
+      const trimmed = (value || "").trim();
+      return trimmed || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function sendCustom(payload) {
+    if (!shouldCollect()) return false;
+    const trackId = trackIdFromPayload(payload);
+    if (!trackId) return false;
+    resolveIdentity().then(function (id) {
+      send("custom", trackId, id);
+    });
+    return true;
+  }
+
   async function boot() {
+    const urlTrackId = readAndStripTrackParam();
     if (!shouldCollect()) return;
 
     const identity = await resolveIdentity();
     send("pageview", null, identity);
+    if (urlTrackId) send("custom", urlTrackId, identity);
 
     document.addEventListener(
       "click",
@@ -224,7 +265,12 @@
     );
   }
 
+  const queued = Array.isArray(window.DSA) ? window.DSA.slice() : [];
+
   const api = {
+    send(payload) {
+      return sendCustom(payload);
+    },
     grantConsent() {
       if (!shouldCollect()) return false;
       try {
@@ -247,7 +293,21 @@
   };
 
   if (typeof window !== "undefined") {
-    window.DSA = Object.assign(window.DSA || {}, api);
+    const existing = window.DSA;
+    window.DSA = existing && !Array.isArray(existing) ? Object.assign(existing, api) : api;
+  }
+
+  for (let i = 0; i < queued.length; i += 1) {
+    const item = queued[i];
+    if (typeof item === "function") {
+      try {
+        item(api);
+      } catch {
+        /* ignore */
+      }
+    } else {
+      sendCustom(item);
+    }
   }
 
   boot();

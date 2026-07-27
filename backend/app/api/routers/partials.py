@@ -18,6 +18,7 @@ _EVENT_TYPE_LABELS = {
     "pageview": "view",
     "click": "click",
     "hover": "hover",
+    "custom": "custom",
 }
 
 
@@ -35,6 +36,31 @@ def _format_location(row: dict) -> str:
     if city and country:
         return esc(f"{city}, {country}")
     return esc(country or "-")
+
+
+def _location_filter_value(row: dict) -> str:
+    city = (row.get("city") or "").strip()
+    if city:
+        return city
+    return (row.get("country") or "").strip()
+
+
+def _cell(
+    *,
+    field: str,
+    value: str,
+    display: str,
+    filter_by: str | None,
+    classes: str = "",
+    title: str | None = None,
+) -> str:
+    class_attr = f' class="{classes}"' if classes else ""
+    title_attr = f' title="{esc(title)}"' if title else ""
+    filter_attr = f' data-filter="{esc(filter_by)}"' if filter_by else ""
+    return (
+        f"<td{class_attr}{title_attr} data-field=\"{esc(field)}\" "
+        f'data-value="{esc(value)}"{filter_attr}>{display}</td>'
+    )
 
 
 @router.get("/events-table", response_class=HTMLResponse)
@@ -77,23 +103,76 @@ def events_table(
 
     out = []
     for e in rows:
-        track = esc(e.get("track_id") or "-")
-        referrer = esc(e.get("referrer") or "")
-        ref_display = referrer if len(referrer) <= 28 else referrer[:28] + "…"
-        corr = esc(e.get("session_id") or "-")
-        corr_display = corr if len(corr) <= 12 else corr[:12] + "…"
-        event_type = esc(e["type"])
-        event_label = esc(_EVENT_TYPE_LABELS.get(e["type"], e["type"]))
+        track_raw = (e.get("track_id") or "").strip()
+        referrer_raw = e.get("referrer") or ""
+        session_raw = e.get("session_id") or ""
+        path_raw = e.get("path") or ""
+        occurred = e.get("occurred_at") or ""
+        event_type = e["type"]
+        event_label = esc(_EVENT_TYPE_LABELS.get(event_type, event_type))
+        ref_display = (
+            esc(referrer_raw)
+            if len(referrer_raw) <= 28
+            else esc(referrer_raw[:28] + "…")
+        )
+        corr_display = (
+            esc(session_raw)
+            if len(session_raw) <= 12
+            else esc(session_raw[:12] + "…")
+        )
+        location_filter = _location_filter_value(e)
         out.append(
-            f"""<tr>
-          <td class="mono">{_format_time(e["occurred_at"])}</td>
-          <td><span class="badge badge-{event_type}">{event_label}</span></td>
-          <td class="mono">{esc(e.get("path") or "")}</td>
-          <td class="mono text-muted">{track}</td>
-          <td class="mono text-muted" title="{corr}">{corr_display}</td>
-          <td class="text-muted" title="{referrer}">{ref_display or "-"}</td>
-          <td>{_format_location(e)}</td>
-        </tr>"""
+            "<tr>"
+            + _cell(
+                field="occurred_at",
+                value=str(occurred),
+                display=_format_time(str(occurred)),
+                filter_by=None,
+                classes="mono",
+            )
+            + _cell(
+                field="type",
+                value=event_type,
+                display=f'<span class="badge badge-{esc(event_type)}">{event_label}</span>',
+                filter_by="type",
+            )
+            + _cell(
+                field="path",
+                value=path_raw,
+                display=esc(path_raw),
+                filter_by="q" if path_raw else None,
+                classes="mono",
+            )
+            + _cell(
+                field="track_id",
+                value=track_raw,
+                display=esc(track_raw or "-"),
+                filter_by="q" if track_raw else None,
+                classes="mono text-muted",
+            )
+            + _cell(
+                field="session_id",
+                value=session_raw,
+                display=corr_display if session_raw else "-",
+                filter_by="q" if session_raw else None,
+                classes="mono text-muted",
+                title=session_raw or None,
+            )
+            + _cell(
+                field="referrer",
+                value=referrer_raw,
+                display=ref_display or "-",
+                filter_by="q" if referrer_raw else None,
+                classes="text-muted",
+                title=referrer_raw or None,
+            )
+            + _cell(
+                field="location",
+                value=location_filter,
+                display=_format_location(e),
+                filter_by="q" if location_filter else None,
+            )
+            + "</tr>"
         )
     return "\n".join(out)
 
@@ -121,18 +200,23 @@ def sites_table(user: CurrentUser, conn: DbConn, demo_mode: DemoMode) -> str:
           data-site-domains="{esc(domains)}"
           data-site-key="{esc(site["site_key"])}"
           data-site-snippet="{esc(snippet)}">
-          <td>{esc(site["name"])}</td>
-          <td class="text-muted">{esc(domains)}</td>
-          <td class="mono">{esc(site["site_key"])}</td>
+          <td class="site-summary">
+            <span class="site-summary-desktop">{esc(site["name"])}</span>
+            <ul class="site-summary-mobile">
+              <li><span class="site-summary-label">Name:</span> {esc(site["name"])}</li>
+              <li><span class="site-summary-label">Domains:</span> {esc(domains)}</li>
+              <li><span class="site-summary-label">Site key:</span> <span class="mono">{esc(site["site_key"])}</span></li>
+            </ul>
+          </td>
+          <td class="site-col-domains text-muted">{esc(domains)}</td>
+          <td class="site-col-key mono">{esc(site["site_key"])}</td>
           <td class="site-actions">
-            <button type="button" class="btn" data-copy-snippet="{esc(snippet)}">
-              Copy tag
-            </button>
-            <button type="button" class="btn" data-curl-test="{esc(curl)}">
-              Test w/curl
+            <button type="button" class="site-menu-btn" data-site-menu aria-label="Site actions" aria-haspopup="menu" aria-expanded="false"
+              data-copy-snippet="{esc(snippet)}" data-curl-test="{esc(curl)}">
+              <span class="site-menu-icon" aria-hidden="true"></span>
             </button>
           </td>
-          <td><button type="button" class="btn" data-edit-site>Edit</button></td>
+          <td class="site-edit-col"><button type="button" class="btn" data-edit-site>Edit</button></td>
         </tr>"""
         )
     return "\n".join(out)

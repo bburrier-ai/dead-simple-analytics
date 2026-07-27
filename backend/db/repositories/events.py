@@ -71,7 +71,8 @@ class EventsRepository:
                     path ILIKE :q OR COALESCE(track_id, '') ILIKE :q OR
                     COALESCE(referrer, '') ILIKE :q OR COALESCE(visitor_id, '') ILIKE :q OR
                     COALESCE(visitor_hash, '') ILIKE :q OR
-                    COALESCE(session_id, '') ILIKE :q OR COALESCE(city, '') ILIKE :q
+                    COALESCE(session_id, '') ILIKE :q OR COALESCE(city, '') ILIKE :q OR
+                    COALESCE(country, '') ILIKE :q
                 )
                 """
             )

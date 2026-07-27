@@ -265,6 +265,7 @@
   }
 
   function refreshEventsTable() {
+    hideEventsMenu();
     const tbody = document.getElementById("events-body");
     if (!tbody || !activeSiteId) return;
     const q = document.getElementById("event-search")?.value || "";
@@ -275,6 +276,104 @@
       .then((html) => {
         tbody.innerHTML = html;
       });
+  }
+
+  let eventsMenuEl = null;
+
+  function hideEventsMenu() {
+    if (eventsMenuEl) {
+      eventsMenuEl.remove();
+      eventsMenuEl = null;
+    }
+  }
+
+  function placeEventsMenu(menu, clientX, clientY) {
+    menu.hidden = false;
+    const pad = 8;
+    const rect = menu.getBoundingClientRect();
+    let left = clientX;
+    let top = clientY;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      top = Math.max(pad, window.innerHeight - rect.height - pad);
+    }
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  function showEventsMenu(cell, clientX, clientY) {
+    hideEventsMenu();
+    const value = cell.getAttribute("data-value") ?? "";
+    const filterBy = cell.getAttribute("data-filter");
+    const canFilter = Boolean(filterBy && value);
+
+    const menu = document.createElement("div");
+    menu.className = "context-menu";
+    menu.setAttribute("role", "menu");
+    menu.innerHTML = `
+      <button type="button" class="context-menu-item" data-action="copy" role="menuitem">Copy value</button>
+      <button type="button" class="context-menu-item" data-action="match" role="menuitem" ${canFilter ? "" : "disabled"}>Show matching</button>
+    `;
+    document.body.appendChild(menu);
+    eventsMenuEl = menu;
+    placeEventsMenu(menu, clientX, clientY);
+
+    menu.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-action]");
+      if (!btn || btn.disabled) return;
+      const action = btn.getAttribute("data-action");
+      hideEventsMenu();
+      if (action === "copy") {
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch {
+          /* ignore clipboard failures */
+        }
+        return;
+      }
+      if (action === "match" && canFilter) {
+        applyMatchingFilter(filterBy, value);
+      }
+    });
+  }
+
+  function applyMatchingFilter(filterBy, value) {
+    const search = document.getElementById("event-search");
+    const typeFilter = document.getElementById("type-filter");
+    if (filterBy === "type" && typeFilter) {
+      typeFilter.value = value;
+      if (search) search.value = "";
+    } else if (filterBy === "q" && search) {
+      search.value = value;
+      if (typeFilter) typeFilter.value = "all";
+    }
+    refreshEventsTable();
+  }
+
+  function bindEventsTableMenu() {
+    const table = document.getElementById("events-table");
+    if (!table) return;
+
+    table.addEventListener("contextmenu", (e) => {
+      const cell = e.target.closest("#events-body td[data-field]");
+      if (!cell) return;
+      e.preventDefault();
+      showEventsMenu(cell, e.clientX, e.clientY);
+    });
+
+    document.addEventListener("click", (e) => {
+      if (eventsMenuEl && !e.target.closest(".context-menu")) {
+        hideEventsMenu();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hideEventsMenu();
+    });
+    window.addEventListener("blur", hideEventsMenu);
+    window.addEventListener("resize", hideEventsMenu);
+    document.addEventListener("scroll", hideEventsMenu, true);
   }
 
   let liveSource = null;
@@ -320,6 +419,7 @@
   }
 
   function bindControls() {
+    bindEventsTableMenu();
     document.getElementById("event-search")?.addEventListener("input", () => refreshEventsTable());
     document.getElementById("type-filter")?.addEventListener("change", () => refreshEventsTable());
 

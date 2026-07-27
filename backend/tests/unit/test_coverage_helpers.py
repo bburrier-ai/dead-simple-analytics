@@ -8,7 +8,12 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from app.api.routers.partials import _format_location, _format_time
+from app.api.routers.partials import (
+    _cell,
+    _format_location,
+    _format_time,
+    _location_filter_value,
+)
 from app.api.schemas import CollectEvent
 from config.logging import JsonFormatter, setup_logging
 from core.exceptions import NotFoundError, UnauthorizedError
@@ -27,6 +32,32 @@ def test_format_location_variants():
     assert _format_location({"city": "Austin", "country": "US"}) == "Austin, US"
     assert _format_location({"country": "US"}) == "US"
     assert _format_location({}) == "-"
+
+
+def test_location_filter_value_prefers_city():
+    assert _location_filter_value({"city": "Austin", "country": "US"}) == "Austin"
+    assert _location_filter_value({"country": "US"}) == "US"
+    assert _location_filter_value({}) == ""
+
+
+def test_event_cell_markup_includes_filter_attrs():
+    html = _cell(
+        field="path",
+        value="/pricing",
+        display="/pricing",
+        filter_by="q",
+        classes="mono",
+        title="/pricing",
+    )
+    assert 'data-field="path"' in html
+    assert 'data-value="/pricing"' in html
+    assert 'data-filter="q"' in html
+    assert 'class="mono"' in html
+    assert 'title="/pricing"' in html
+
+    bare = _cell(field="occurred_at", value="t", display="now", filter_by=None)
+    assert "data-filter" not in bare
+    assert 'data-field="occurred_at"' in bare
 
 
 def test_collect_event_id_must_be_uuid():
