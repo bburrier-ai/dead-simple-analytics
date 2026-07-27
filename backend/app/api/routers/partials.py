@@ -193,30 +193,46 @@ def sites_table(user: CurrentUser, conn: DbConn, demo_mode: DemoMode) -> str:
         domains = ", ".join(domains_list)
         snippet = site.get("snippet") or sites_service.snippet_for(site["site_key"])
         curl = sites_service.curl_for(site["site_key"], domains_list)
+        name = esc(site["name"])
+        key = esc(site["site_key"])
+        domains_esc = esc(domains)
+        snippet_esc = esc(snippet)
+        curl_esc = esc(curl)
         out.append(
             f"""<tr class="no-click site-row"
           data-site-id="{esc(site_id)}"
-          data-site-name="{esc(site["name"])}"
-          data-site-domains="{esc(domains)}"
-          data-site-key="{esc(site["site_key"])}"
-          data-site-snippet="{esc(snippet)}">
+          data-site-name="{name}"
+          data-site-domains="{domains_esc}"
+          data-site-key="{key}"
+          data-site-snippet="{snippet_esc}">
           <td class="site-summary">
-            <span class="site-summary-desktop">{esc(site["name"])}</span>
+            <span class="site-summary-desktop">{name}</span>
             <ul class="site-summary-mobile">
-              <li><span class="site-summary-label">Name:</span> {esc(site["name"])}</li>
-              <li><span class="site-summary-label">Domains:</span> {esc(domains)}</li>
-              <li><span class="site-summary-label">Site key:</span> <span class="mono">{esc(site["site_key"])}</span></li>
+              <li><span class="site-summary-label">Name:</span> {name}</li>
+              <li><span class="site-summary-label">Domains:</span> {domains_esc}</li>
+              <li>
+                <span class="site-summary-label">Site key:</span>
+                <span class="mono">{key}</span>
+              </li>
             </ul>
           </td>
-          <td class="site-col-domains text-muted">{esc(domains)}</td>
-          <td class="site-col-key mono">{esc(site["site_key"])}</td>
+          <td class="site-col-domains text-muted">{domains_esc}</td>
+          <td class="site-col-key mono">{key}</td>
           <td class="site-actions">
-            <button type="button" class="site-menu-btn" data-site-menu aria-label="Site actions" aria-haspopup="menu" aria-expanded="false"
-              data-copy-snippet="{esc(snippet)}" data-curl-test="{esc(curl)}">
+            <button type="button"
+              class="site-menu-btn"
+              data-site-menu
+              aria-label="Site actions"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              data-copy-snippet="{snippet_esc}"
+              data-curl-test="{curl_esc}">
               <span class="site-menu-icon" aria-hidden="true"></span>
             </button>
           </td>
-          <td class="site-edit-col"><button type="button" class="btn" data-edit-site>Edit</button></td>
+          <td class="site-edit-col">
+            <button type="button" class="btn" data-edit-site>Edit</button>
+          </td>
         </tr>"""
         )
     return "\n".join(out)
