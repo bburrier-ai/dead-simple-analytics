@@ -199,6 +199,27 @@ def test_events_repository_builds_filter_search_and_sort_queries():
     assert params["offset"] == 10
 
 
+def test_events_repository_applies_time_window():
+    conn = MagicMock()
+    conn.execute.side_effect = [
+        MagicMock(scalar_one=MagicMock(return_value=0)),
+        MagicMock(mappings=MagicMock(return_value=[])),
+    ]
+    start = datetime(2026, 7, 1, tzinfo=UTC)
+    end = datetime(2026, 7, 8, tzinfo=UTC)
+    EventsRepository().list_events(
+        conn,
+        uuid4(),
+        start=start,
+        end=end,
+    )
+    count_sql = str(conn.execute.call_args_list[0].args[0])
+    params = conn.execute.call_args_list[0].args[1]
+    assert "occurred_at >= :start" in count_sql
+    assert params["start"] == start
+    assert params["end"] == end
+
+
 def test_events_repository_defaults_invalid_sort_and_desc_order():
     conn = MagicMock()
     conn.execute.side_effect = [

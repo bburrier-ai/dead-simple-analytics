@@ -43,6 +43,8 @@ class EventsRepository:
         order: str = "desc",
         page: int = 1,
         limit: int = 50,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> tuple[list[dict], int]:
         allowed_sort = {
             "occurred_at",
@@ -52,6 +54,8 @@ class EventsRepository:
             "referrer",
             "city",
             "session_id",
+            "visitor_id",
+            "visitor_hash",
         }
         sort_col = sort if sort in allowed_sort else "occurred_at"
         order_sql = "ASC" if order.lower() == "asc" else "DESC"
@@ -63,6 +67,11 @@ class EventsRepository:
         if event_type and event_type != "all":
             filters.append("type = :event_type")
             params["event_type"] = event_type
+
+        if start is not None and end is not None:
+            filters.append("occurred_at >= :start AND occurred_at < :end")
+            params["start"] = start
+            params["end"] = end
 
         if q:
             filters.append(

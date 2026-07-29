@@ -39,7 +39,7 @@
       <div class="filters-bar">
         <div>
           <label for="event-search">Search</label>
-          <input type="search" id="event-search" placeholder="path, track id, session, referrer…" />
+          <input type="search" id="event-search" placeholder="path, track id, session, visitor…" />
         </div>
         <div>
           <label for="type-filter">Type</label>
@@ -56,15 +56,7 @@
       <div class="data-table-wrap card table-card">
         <table class="data-table" id="events-table">
           <thead>
-            <tr>
-              <th>Time</th>
-              <th>Type</th>
-              <th>Path</th>
-              <th>Track ID</th>
-              <th>Session</th>
-              <th>Referrer</th>
-              <th>Location</th>
-            </tr>
+            <tr id="events-head"></tr>
           </thead>
           <tbody id="events-body"></tbody>
         </table>

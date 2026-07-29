@@ -28,6 +28,10 @@ def test_demo_list_events_and_chart_helpers():
     )
     assert clicks["page"] == 1
     assert all(item["type"] == "click" for item in clicks["items"])
+    assert all(item.get("visitor_hash") for item in clicks["items"])
+
+    recent = demo_fixtures.list_events(demo_fixtures.DEMO_SITE_ID, hours=24)
+    assert recent["total"] >= 1
 
     hours = demo_fixtures.visits_stats(hours=24, tz_name="UTC")
     assert hours["totals"]["pageviews"] >= 0

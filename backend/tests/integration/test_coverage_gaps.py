@@ -168,6 +168,7 @@ def test_events_filter_query_and_type(client):
     assert 'data-filter="type"' in html
     assert 'data-field="track_id"' in html
     assert 'data-value="cta-signup"' in html
+    assert 'data-field="visitor_hash"' in html
 
 
 def test_get_site_and_stats_hours(client):

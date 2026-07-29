@@ -21,6 +21,40 @@ _EVENT_TYPE_LABELS = {
     "custom": "custom",
 }
 
+EVENT_COLUMN_LABELS = {
+    "occurred_at": "Time",
+    "type": "Type",
+    "path": "Path",
+    "track_id": "Track ID",
+    "session_id": "Session",
+    "visitor_hash": "Visitor",
+    "visitor_id": "Visitor ID",
+    "referrer": "Referrer",
+    "location": "Location",
+}
+
+DEFAULT_EVENT_COLUMNS = [
+    "occurred_at",
+    "type",
+    "path",
+    "track_id",
+    "session_id",
+    "visitor_hash",
+    "referrer",
+    "location",
+]
+
+
+def parse_event_columns(raw: str | None) -> list[str]:
+    if not raw:
+        return list(DEFAULT_EVENT_COLUMNS)
+    cols: list[str] = []
+    for part in raw.split(","):
+        key = part.strip()
+        if key in EVENT_COLUMN_LABELS and key not in cols:
+            cols.append(key)
+    return cols or list(DEFAULT_EVENT_COLUMNS)
+
 
 def _format_time(iso: str) -> str:
     try:
@@ -45,6 +79,12 @@ def _location_filter_value(row: dict) -> str:
     return (row.get("country") or "").strip()
 
 
+def _shorten(value: str, limit: int = 12) -> str:
+    if len(value) <= limit:
+        return esc(value)
+    return esc(value[:limit] + "…")
+
+
 def _cell(
     *,
     field: str,
@@ -63,6 +103,91 @@ def _cell(
     )
 
 
+def _event_row_cells(e: dict) -> dict[str, str]:
+    track_raw = (e.get("track_id") or "").strip()
+    referrer_raw = e.get("referrer") or ""
+    session_raw = e.get("session_id") or ""
+    visitor_hash_raw = (e.get("visitor_hash") or "").strip()
+    visitor_id_raw = (e.get("visitor_id") or "").strip()
+    path_raw = e.get("path") or ""
+    occurred = e.get("occurred_at") or ""
+    event_type = e["type"]
+    event_label = esc(_EVENT_TYPE_LABELS.get(event_type, event_type))
+    ref_display = (
+        esc(referrer_raw) if len(referrer_raw) <= 28 else esc(referrer_raw[:28] + "…")
+    )
+    location_filter = _location_filter_value(e)
+    return {
+        "occurred_at": _cell(
+            field="occurred_at",
+            value=str(occurred),
+            display=_format_time(str(occurred)),
+            filter_by=None,
+            classes="mono",
+        ),
+        "type": _cell(
+            field="type",
+            value=event_type,
+            display=(
+                f'<span class="badge badge-{esc(event_type)}">{event_label}</span>'
+            ),
+            filter_by="type",
+        ),
+        "path": _cell(
+            field="path",
+            value=path_raw,
+            display=esc(path_raw),
+            filter_by="q" if path_raw else None,
+            classes="mono",
+        ),
+        "track_id": _cell(
+            field="track_id",
+            value=track_raw,
+            display=esc(track_raw or "-"),
+            filter_by="q" if track_raw else None,
+            classes="mono text-muted",
+        ),
+        "session_id": _cell(
+            field="session_id",
+            value=session_raw,
+            display=_shorten(session_raw) if session_raw else "-",
+            filter_by="q" if session_raw else None,
+            classes="mono text-muted",
+            title=session_raw or None,
+        ),
+        "visitor_hash": _cell(
+            field="visitor_hash",
+            value=visitor_hash_raw,
+            display=_shorten(visitor_hash_raw) if visitor_hash_raw else "-",
+            filter_by="q" if visitor_hash_raw else None,
+            classes="mono text-muted",
+            title=visitor_hash_raw or None,
+        ),
+        "visitor_id": _cell(
+            field="visitor_id",
+            value=visitor_id_raw,
+            display=_shorten(visitor_id_raw) if visitor_id_raw else "-",
+            filter_by="q" if visitor_id_raw else None,
+            classes="mono text-muted",
+            title=visitor_id_raw or None,
+        ),
+        "referrer": _cell(
+            field="referrer",
+            value=referrer_raw,
+            display=ref_display or "-",
+            filter_by="q" if referrer_raw else None,
+            classes="text-muted",
+            title=referrer_raw or None,
+        ),
+        "location": _cell(
+            field="location",
+            value=location_filter,
+            display=_format_location(e),
+            filter_by="q" if location_filter else None,
+        ),
+    }
+
+
 @router.get("/events-table", response_class=HTMLResponse)
 def events_table(
     user: CurrentUser,
@@ -74,8 +199,13 @@ def events_table(
     sort: str = Query("occurred_at"),
     order: str = Query("desc"),
     page: int = Query(1, ge=1),
+    days: int | None = Query(None, ge=1, le=365),
+    hours: int | None = Query(None, ge=1, le=168),
+    tz: str | None = Query(None, max_length=64),
+    columns: str | None = Query(None),
 ) -> str:
     _ = user
+    col_ids = parse_event_columns(columns)
     if demo_mode:
         data = demo_fixtures.list_events(
             site_id,
@@ -85,6 +215,9 @@ def events_table(
             order=order,
             page=page,
             limit=25,
+            days=days,
+            hours=hours,
+            tz_name=tz,
         )
     else:
         data = events_service.list_events(
@@ -96,84 +229,21 @@ def events_table(
             order=order,
             page=page,
             limit=25,
+            days=days,
+            hours=hours,
+            tz_name=tz,
         )
     rows = data["items"]
     if not rows:
-        return '<tr><td colspan="7" class="text-muted">No events match your filters</td></tr>'
+        return (
+            f'<tr><td colspan="{len(col_ids)}" class="text-muted">'
+            "No events match your filters</td></tr>"
+        )
 
     out = []
     for e in rows:
-        track_raw = (e.get("track_id") or "").strip()
-        referrer_raw = e.get("referrer") or ""
-        session_raw = e.get("session_id") or ""
-        path_raw = e.get("path") or ""
-        occurred = e.get("occurred_at") or ""
-        event_type = e["type"]
-        event_label = esc(_EVENT_TYPE_LABELS.get(event_type, event_type))
-        ref_display = (
-            esc(referrer_raw)
-            if len(referrer_raw) <= 28
-            else esc(referrer_raw[:28] + "…")
-        )
-        corr_display = (
-            esc(session_raw)
-            if len(session_raw) <= 12
-            else esc(session_raw[:12] + "…")
-        )
-        location_filter = _location_filter_value(e)
-        out.append(
-            "<tr>"
-            + _cell(
-                field="occurred_at",
-                value=str(occurred),
-                display=_format_time(str(occurred)),
-                filter_by=None,
-                classes="mono",
-            )
-            + _cell(
-                field="type",
-                value=event_type,
-                display=f'<span class="badge badge-{esc(event_type)}">{event_label}</span>',
-                filter_by="type",
-            )
-            + _cell(
-                field="path",
-                value=path_raw,
-                display=esc(path_raw),
-                filter_by="q" if path_raw else None,
-                classes="mono",
-            )
-            + _cell(
-                field="track_id",
-                value=track_raw,
-                display=esc(track_raw or "-"),
-                filter_by="q" if track_raw else None,
-                classes="mono text-muted",
-            )
-            + _cell(
-                field="session_id",
-                value=session_raw,
-                display=corr_display if session_raw else "-",
-                filter_by="q" if session_raw else None,
-                classes="mono text-muted",
-                title=session_raw or None,
-            )
-            + _cell(
-                field="referrer",
-                value=referrer_raw,
-                display=ref_display or "-",
-                filter_by="q" if referrer_raw else None,
-                classes="text-muted",
-                title=referrer_raw or None,
-            )
-            + _cell(
-                field="location",
-                value=location_filter,
-                display=_format_location(e),
-                filter_by="q" if location_filter else None,
-            )
-            + "</tr>"
-        )
+        cells = _event_row_cells(e)
+        out.append("<tr>" + "".join(cells[c] for c in col_ids if c in cells) + "</tr>")
     return "\n".join(out)
 
 

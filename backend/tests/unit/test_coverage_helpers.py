@@ -13,11 +13,13 @@ from app.api.routers.partials import (
     _format_location,
     _format_time,
     _location_filter_value,
+    parse_event_columns,
 )
 from app.api.schemas import CollectEvent
 from config.logging import JsonFormatter, setup_logging
 from core.exceptions import NotFoundError, UnauthorizedError
 from core.rate_limit import SlidingWindowRateLimiter
+from core.time_window import period_bounds
 from demo import fixtures as demo_fixtures
 from demo import mode as demo_mode
 from services.auth import AuthService
@@ -38,6 +40,28 @@ def test_location_filter_value_prefers_city():
     assert _location_filter_value({"city": "Austin", "country": "US"}) == "Austin"
     assert _location_filter_value({"country": "US"}) == "US"
     assert _location_filter_value({}) == ""
+
+
+def test_parse_event_columns_defaults_and_filters():
+    cols = parse_event_columns(None)
+    assert "visitor_hash" in cols
+    assert cols.index("visitor_hash") == cols.index("session_id") + 1
+    assert parse_event_columns("type,nope,visitor_hash") == ["type", "visitor_hash"]
+    assert parse_event_columns("") == cols
+
+
+def test_period_bounds_hours_and_days():
+    hours = period_bounds(hours=24)
+    assert hours is not None
+    assert (hours[1] - hours[0]).total_seconds() == 24 * 3600
+    days = period_bounds(days=7, tz_name="UTC")
+    assert days is not None
+    assert days[0] < days[1]
+    assert period_bounds() is None
+    from core.time_window import resolve_tz
+
+    assert str(resolve_tz(None)) == "UTC"
+    assert str(resolve_tz("Not/AZone")) == "UTC"
 
 
 def test_event_cell_markup_includes_filter_attrs():

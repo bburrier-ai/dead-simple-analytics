@@ -5,6 +5,74 @@
   let activeSiteId = null;
   let chartPeriod = { unit: "days", value: 14 };
 
+  const EVENT_COLUMN_LABELS = {
+    occurred_at: "Time",
+    type: "Type",
+    path: "Path",
+    track_id: "Track ID",
+    session_id: "Session",
+    visitor_hash: "Visitor",
+    visitor_id: "Visitor ID",
+    referrer: "Referrer",
+    location: "Location",
+  };
+  const DEFAULT_EVENT_COLUMNS = [
+    "occurred_at",
+    "type",
+    "path",
+    "track_id",
+    "session_id",
+    "visitor_hash",
+    "referrer",
+    "location",
+  ];
+  const COLUMNS_STORAGE_KEY = "dsa-events-columns";
+
+  function loadEventColumns() {
+    try {
+      const raw = localStorage.getItem(COLUMNS_STORAGE_KEY);
+      if (!raw) return DEFAULT_EVENT_COLUMNS.slice();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return DEFAULT_EVENT_COLUMNS.slice();
+      const cols = [];
+      for (const key of parsed) {
+        if (EVENT_COLUMN_LABELS[key] && !cols.includes(key)) cols.push(key);
+      }
+      return cols.length ? cols : DEFAULT_EVENT_COLUMNS.slice();
+    } catch {
+      return DEFAULT_EVENT_COLUMNS.slice();
+    }
+  }
+
+  function saveEventColumns(cols) {
+    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(cols));
+  }
+
+  let eventColumns = loadEventColumns();
+
+  function renderEventsHeader() {
+    const head = document.getElementById("events-head");
+    if (!head) return;
+    head.innerHTML = eventColumns
+      .map(
+        (key) =>
+          `<th data-column="${key}">${EVENT_COLUMN_LABELS[key] || key}</th>`
+      )
+      .join("");
+  }
+
+  function periodQueryParams() {
+    const params = new URLSearchParams();
+    if (chartPeriod.unit === "hours") {
+      params.set("hours", String(chartPeriod.value));
+    } else {
+      params.set("days", String(chartPeriod.value));
+    }
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) params.set("tz", tz);
+    return params;
+  }
+
   function formatCompactMetric(value) {
     const n = Number(value) || 0;
     if (n < 1000) return String(n);
@@ -268,10 +336,15 @@
     hideEventsMenu();
     const tbody = document.getElementById("events-body");
     if (!tbody || !activeSiteId) return;
+    renderEventsHeader();
     const q = document.getElementById("event-search")?.value || "";
     const type = document.getElementById("type-filter")?.value || "all";
-    const url = `/partials/events-table?site_id=${encodeURIComponent(activeSiteId)}&type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`;
-    fetch(url, { credentials: "include" })
+    const params = periodQueryParams();
+    params.set("site_id", activeSiteId);
+    params.set("type", type);
+    params.set("q", q);
+    params.set("columns", eventColumns.join(","));
+    fetch(`/partials/events-table?${params}`, { credentials: "include" })
       .then((r) => r.text())
       .then((html) => {
         tbody.innerHTML = html;
@@ -279,11 +352,19 @@
   }
 
   let eventsMenuEl = null;
+  let columnsDialogEl = null;
 
   function hideEventsMenu() {
     if (eventsMenuEl) {
       eventsMenuEl.remove();
       eventsMenuEl = null;
+    }
+  }
+
+  function hideColumnsDialog() {
+    if (columnsDialogEl) {
+      columnsDialogEl.remove();
+      columnsDialogEl = null;
     }
   }
 
@@ -339,6 +420,157 @@
     });
   }
 
+  function showHeaderMenu(clientX, clientY) {
+    hideEventsMenu();
+    const menu = document.createElement("div");
+    menu.className = "context-menu";
+    menu.setAttribute("role", "menu");
+    menu.innerHTML = `
+      <button type="button" class="context-menu-item" data-action="configure" role="menuitem">Configure table</button>
+    `;
+    document.body.appendChild(menu);
+    eventsMenuEl = menu;
+    placeEventsMenu(menu, clientX, clientY);
+    menu.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-action]");
+      if (!btn) return;
+      hideEventsMenu();
+      if (btn.getAttribute("data-action") === "configure") {
+        openColumnsDialog();
+      }
+    });
+  }
+
+  function openColumnsDialog() {
+    hideColumnsDialog();
+    const draft = eventColumns.slice();
+    const order = [
+      ...draft,
+      ...Object.keys(EVENT_COLUMN_LABELS).filter((key) => !draft.includes(key)),
+    ];
+    const overlay = document.createElement("div");
+    overlay.className = "columns-dialog-overlay";
+    overlay.innerHTML = `
+      <div class="columns-dialog card" role="dialog" aria-modal="true" aria-label="Configure table">
+        <h2>Configure table</h2>
+        <p class="columns-dialog-hint">Drag rows to reorder. Uncheck to hide a column.</p>
+        <ul class="columns-dialog-list"></ul>
+        <div class="columns-dialog-actions">
+          <button type="button" class="btn" data-columns-cancel>Cancel</button>
+          <button type="button" class="btn btn-primary" data-columns-save>Save</button>
+        </div>
+      </div>
+    `;
+    const list = overlay.querySelector(".columns-dialog-list");
+    let dragKey = null;
+
+    function syncDraftFromDom() {
+      const next = [];
+      list.querySelectorAll(".columns-dialog-item").forEach((item) => {
+        const key = item.dataset.column;
+        const checked = item.querySelector('input[type="checkbox"]')?.checked;
+        if (key && checked) next.push(key);
+      });
+      draft.length = 0;
+      draft.push(...next);
+    }
+
+    function moveItem(fromKey, toKey, placeAfter) {
+      if (!fromKey || !toKey || fromKey === toKey) return;
+      const from = order.indexOf(fromKey);
+      if (from < 0) return;
+      const [item] = order.splice(from, 1);
+      let insertAt = order.indexOf(toKey);
+      if (insertAt < 0) {
+        order.splice(from, 0, item);
+        return;
+      }
+      if (placeAfter) insertAt += 1;
+      order.splice(insertAt, 0, item);
+      renderList();
+      syncDraftFromDom();
+    }
+
+    function renderList() {
+      list.innerHTML = "";
+      for (const key of order) {
+        const li = document.createElement("li");
+        li.className = "columns-dialog-item";
+        li.dataset.column = key;
+        li.draggable = true;
+        const checked = draft.includes(key);
+        li.innerHTML = `
+          <span class="columns-dialog-handle" aria-hidden="true" title="Drag to reorder"></span>
+          <label class="columns-dialog-check">
+            <input type="checkbox" ${checked ? "checked" : ""} />
+            <span>${EVENT_COLUMN_LABELS[key]}</span>
+          </label>
+        `;
+        const checkbox = li.querySelector('input[type="checkbox"]');
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            if (!draft.includes(key)) draft.push(key);
+          } else {
+            const at = draft.indexOf(key);
+            if (at >= 0) draft.splice(at, 1);
+          }
+        });
+        checkbox.addEventListener("mousedown", (e) => e.stopPropagation());
+        checkbox.addEventListener("click", (e) => e.stopPropagation());
+
+        li.addEventListener("dragstart", (e) => {
+          dragKey = key;
+          li.classList.add("is-dragging");
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", key);
+        });
+        li.addEventListener("dragend", () => {
+          dragKey = null;
+          li.classList.remove("is-dragging");
+          list.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+            el.classList.remove("is-drop-before", "is-drop-after");
+          });
+        });
+        li.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          const rect = li.getBoundingClientRect();
+          const after = e.clientY > rect.top + rect.height / 2;
+          li.classList.toggle("is-drop-before", !after);
+          li.classList.toggle("is-drop-after", after);
+        });
+        li.addEventListener("dragleave", () => {
+          li.classList.remove("is-drop-before", "is-drop-after");
+        });
+        li.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const fromKey = dragKey || e.dataTransfer.getData("text/plain");
+          const rect = li.getBoundingClientRect();
+          const after = e.clientY > rect.top + rect.height / 2;
+          li.classList.remove("is-drop-before", "is-drop-after");
+          moveItem(fromKey, key, after);
+        });
+        list.appendChild(li);
+      }
+    }
+
+    renderList();
+    overlay.querySelector("[data-columns-cancel]").addEventListener("click", hideColumnsDialog);
+    overlay.querySelector("[data-columns-save]").addEventListener("click", () => {
+      syncDraftFromDom();
+      if (!draft.length) return;
+      eventColumns = draft.slice();
+      saveEventColumns(eventColumns);
+      hideColumnsDialog();
+      refreshEventsTable();
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) hideColumnsDialog();
+    });
+    document.body.appendChild(overlay);
+    columnsDialogEl = overlay;
+  }
+
   function applyMatchingFilter(filterBy, value) {
     const search = document.getElementById("event-search");
     const typeFilter = document.getElementById("type-filter");
@@ -357,6 +589,12 @@
     if (!table) return;
 
     table.addEventListener("contextmenu", (e) => {
+      const headerCell = e.target.closest("#events-table thead th");
+      if (headerCell) {
+        e.preventDefault();
+        showHeaderMenu(e.clientX, e.clientY);
+        return;
+      }
       const cell = e.target.closest("#events-body td[data-field]");
       if (!cell) return;
       e.preventDefault();
@@ -369,7 +607,10 @@
       }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") hideEventsMenu();
+      if (e.key === "Escape") {
+        hideEventsMenu();
+        hideColumnsDialog();
+      }
     });
     window.addEventListener("blur", hideEventsMenu);
     window.addEventListener("resize", hideEventsMenu);
@@ -432,6 +673,7 @@
           value: parseInt(btn.dataset.value, 10) || 14,
         };
         await loadChart();
+        refreshEventsTable();
       });
     });
 
@@ -447,6 +689,7 @@
 
   window.initDashboard = async function initDashboard() {
     bindControls();
+    renderEventsHeader();
     activeSiteId = getActiveSiteId();
     if (activeSiteId) {
       await loadChart();

@@ -724,6 +724,105 @@ select {
   cursor: not-allowed;
 }
 
+.columns-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.columns-dialog {
+  width: min(28rem, 100%);
+  max-height: min(36rem, calc(100vh - 2rem));
+  overflow: auto;
+  padding: 1rem;
+}
+
+.columns-dialog h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.columns-dialog-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.columns-dialog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.columns-dialog-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: grab;
+  user-select: none;
+}
+
+.columns-dialog-item.is-dragging {
+  opacity: 0.55;
+}
+
+.columns-dialog-item.is-drop-before::before,
+.columns-dialog-item.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0.4rem;
+  right: 0.4rem;
+  height: 2px;
+  background: var(--color-text);
+}
+
+.columns-dialog-item.is-drop-before::before {
+  top: -2px;
+}
+
+.columns-dialog-item.is-drop-after::after {
+  bottom: -2px;
+}
+
+.columns-dialog-handle {
+  flex-shrink: 0;
+  width: 0.7rem;
+  height: 0.85rem;
+  background:
+    linear-gradient(currentColor, currentColor) 0 0 / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 50% / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 100% / 100% 2px no-repeat;
+  opacity: 0.45;
+}
+
+.columns-dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.columns-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 .badge {
   font-size: 0.65rem;
   padding: 0.15rem 0.4rem;

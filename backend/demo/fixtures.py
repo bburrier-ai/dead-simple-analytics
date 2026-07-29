@@ -393,8 +393,28 @@ def list_events(
     order: str = "desc",
     page: int = 1,
     limit: int = 50,
+    days: int | None = None,
+    hours: int | None = None,
+    tz_name: str | None = None,
 ) -> dict:
+    from core.time_window import period_bounds
+
     rows = [dict(event) for event in _events_now() if UUID(str(event["site_id"])) == site_id]
+    for row in rows:
+        if not row.get("visitor_hash") and row.get("visitor_id"):
+            row["visitor_hash"] = "f_" + str(row["visitor_id"])
+
+    bounds = period_bounds(days=days, hours=hours, tz_name=tz_name)
+    if bounds:
+        start, end = bounds
+        filtered = []
+        for row in rows:
+            occurred = datetime.fromisoformat(
+                str(row["occurred_at"]).replace("Z", "+00:00")
+            )
+            if start <= occurred < end:
+                filtered.append(row)
+        rows = filtered
 
     if event_type and event_type != "all":
         rows = [row for row in rows if row["type"] == event_type]
@@ -408,6 +428,7 @@ def list_events(
             or needle in (row.get("track_id") or "").lower()
             or needle in (row.get("referrer") or "").lower()
             or needle in (row.get("visitor_id") or "").lower()
+            or needle in (row.get("visitor_hash") or "").lower()
             or needle in (row.get("session_id") or "").lower()
             or needle in (row.get("city") or "").lower()
             or needle in (row.get("country") or "").lower()
