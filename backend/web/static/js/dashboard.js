@@ -49,6 +49,8 @@
   }
 
   let eventColumns = loadEventColumns();
+  let eventsPage = 1;
+  let eventsPageCount = 1;
 
   function renderEventsHeader() {
     const head = document.getElementById("events-head");
@@ -332,10 +334,44 @@
     renderChart(data.series, data.totals);
   }
 
-  function refreshEventsTable() {
+  function renderEventsPagination(total, page, limit) {
+    const el = document.getElementById("events-pagination");
+    if (!el) return;
+    const pageSize = Math.max(1, Number(limit) || 25);
+    const pageCount = Math.max(1, Math.ceil(Number(total) / pageSize));
+    eventsPage = Math.min(Math.max(1, Number(page) || 1), pageCount);
+    eventsPageCount = pageCount;
+    const range = el.querySelector("[data-events-range]");
+    const actions = el.querySelector(".events-pagination-actions");
+    const prev = el.querySelector("[data-events-prev]");
+    const next = el.querySelector("[data-events-next]");
+    if (range) {
+      if (total === 0) {
+        range.textContent = "No events";
+      } else {
+        const start = (eventsPage - 1) * pageSize + 1;
+        const end = Math.min(eventsPage * pageSize, total);
+        range.textContent = `${start}-${end} of ${total}`;
+      }
+    }
+    // Nav only when there is more than one page (not merely more than one record).
+    if (actions) actions.hidden = pageCount <= 1;
+    if (prev) {
+      prev.hidden = pageCount <= 1;
+      prev.disabled = eventsPage <= 1;
+    }
+    if (next) {
+      next.hidden = pageCount <= 1;
+      next.disabled = eventsPage >= pageCount;
+    }
+    el.hidden = false;
+  }
+
+  function refreshEventsTable(options = {}) {
     hideEventsMenu();
     const tbody = document.getElementById("events-body");
     if (!tbody || !activeSiteId) return;
+    if (options.resetPage) eventsPage = 1;
     renderEventsHeader();
     const q = document.getElementById("event-search")?.value || "";
     const type = document.getElementById("type-filter")?.value || "all";
@@ -344,10 +380,17 @@
     params.set("type", type);
     params.set("q", q);
     params.set("columns", eventColumns.join(","));
+    params.set("page", String(eventsPage));
     fetch(`/partials/events-table?${params}`, { credentials: "include" })
-      .then((r) => r.text())
-      .then((html) => {
+      .then((r) => {
+        const total = parseInt(r.headers.get("X-Events-Total") || "0", 10);
+        const page = parseInt(r.headers.get("X-Events-Page") || "1", 10);
+        const limit = parseInt(r.headers.get("X-Events-Limit") || "25", 10);
+        return r.text().then((html) => ({ html, total, page, limit }));
+      })
+      .then(({ html, total, page, limit }) => {
         tbody.innerHTML = html;
+        renderEventsPagination(total, page, limit);
       });
   }
 
@@ -562,7 +605,7 @@
       eventColumns = draft.slice();
       saveEventColumns(eventColumns);
       hideColumnsDialog();
-      refreshEventsTable();
+      refreshEventsTable({ resetPage: true });
     });
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) hideColumnsDialog();
@@ -581,7 +624,7 @@
       search.value = value;
       if (typeFilter) typeFilter.value = "all";
     }
-    refreshEventsTable();
+    refreshEventsTable({ resetPage: true });
   }
 
   function bindEventsTableMenu() {
@@ -661,8 +704,23 @@
 
   function bindControls() {
     bindEventsTableMenu();
-    document.getElementById("event-search")?.addEventListener("input", () => refreshEventsTable());
-    document.getElementById("type-filter")?.addEventListener("change", () => refreshEventsTable());
+    document.getElementById("event-search")?.addEventListener("input", () => {
+      refreshEventsTable({ resetPage: true });
+    });
+    document.getElementById("type-filter")?.addEventListener("change", () => {
+      refreshEventsTable({ resetPage: true });
+    });
+    document.getElementById("events-pagination")?.addEventListener("click", (e) => {
+      const prev = e.target.closest("[data-events-prev]");
+      const next = e.target.closest("[data-events-next]");
+      if (prev && !prev.disabled && eventsPage > 1) {
+        eventsPage -= 1;
+        refreshEventsTable();
+      } else if (next && !next.disabled && eventsPage < eventsPageCount) {
+        eventsPage += 1;
+        refreshEventsTable();
+      }
+    });
 
     document.querySelectorAll(".period-pill").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -673,14 +731,14 @@
           value: parseInt(btn.dataset.value, 10) || 14,
         };
         await loadChart();
-        refreshEventsTable();
+        refreshEventsTable({ resetPage: true });
       });
     });
 
     document.addEventListener("site-changed", async (e) => {
       activeSiteId = e.detail?.siteId || getActiveSiteId();
       await loadChart();
-      refreshEventsTable();
+      refreshEventsTable({ resetPage: true });
     });
 
     window.addEventListener("resize", () => loadChart());

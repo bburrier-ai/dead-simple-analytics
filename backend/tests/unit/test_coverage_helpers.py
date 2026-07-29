@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.api.routers.partials import (
     _cell,
+    _events_table_headers,
     _format_location,
     _format_time,
     _location_filter_value,
@@ -48,6 +49,14 @@ def test_parse_event_columns_defaults_and_filters():
     assert cols.index("visitor_hash") == cols.index("session_id") + 1
     assert parse_event_columns("type,nope,visitor_hash") == ["type", "visitor_hash"]
     assert parse_event_columns("") == cols
+
+
+def test_events_table_headers():
+    assert _events_table_headers(total=42, page=2, limit=25) == {
+        "X-Events-Total": "42",
+        "X-Events-Page": "2",
+        "X-Events-Limit": "25",
+    }
 
 
 def test_period_bounds_hours_and_days():

@@ -280,6 +280,49 @@ def _events_now() -> list[dict]:
         event.setdefault("site_id", DEMO_SITE_ID)
         event.setdefault("title", "")
         rows.append(event)
+
+    # Extra rows so the default 25/page events table has multiple pages in demo mode.
+    paths = ("/", "/blog/open-source", "/resume", "/pricing", "/projects")
+    types = ("pageview", "click", "hover", "custom")
+    cities = (
+        ("US", "Portland"),
+        ("DE", "Berlin"),
+        ("US", "San Francisco"),
+        ("CA", "Toronto"),
+        ("GB", "London"),
+        ("US", "Austin"),
+        ("NL", "Amsterdam"),
+    )
+    for index in range(40):
+        country, city = cities[index % len(cities)]
+        visitor = f"v_demo_{index:03d}"
+        event_type = types[index % len(types)]
+        path = paths[index % len(paths)]
+        track_id = ""
+        if event_type == "click":
+            track_id = f"cta-{index % 7}"
+        elif event_type == "custom":
+            track_id = f"campaign-{index % 5}"
+        elif event_type == "hover":
+            track_id = f"hover-{index % 4}"
+        rows.append(
+            {
+                "id": f"00000000-0000-4000-8000-{0x200 + index:012x}",
+                "site_id": DEMO_SITE_ID,
+                "type": event_type,
+                "path": path,
+                "title": "",
+                "track_id": track_id,
+                "referrer": "https://example.com/" if index % 3 == 0 else "",
+                "country": country,
+                "city": city,
+                "visitor_id": visitor,
+                "session_id": f"sess_demo_{index:03d}",
+                "occurred_at": (now - timedelta(hours=index + 1, minutes=index % 17)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            }
+        )
     return rows
 
 

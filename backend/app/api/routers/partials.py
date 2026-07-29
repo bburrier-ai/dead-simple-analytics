@@ -44,6 +44,16 @@ DEFAULT_EVENT_COLUMNS = [
     "location",
 ]
 
+EVENTS_TABLE_LIMIT = 25
+
+
+def _events_table_headers(*, total: int, page: int, limit: int) -> dict[str, str]:
+    return {
+        "X-Events-Total": str(total),
+        "X-Events-Page": str(page),
+        "X-Events-Limit": str(limit),
+    }
+
 
 def parse_event_columns(raw: str | None) -> list[str]:
     if not raw:
@@ -203,9 +213,10 @@ def events_table(
     hours: int | None = Query(None, ge=1, le=168),
     tz: str | None = Query(None, max_length=64),
     columns: str | None = Query(None),
-) -> str:
+) -> HTMLResponse:
     _ = user
     col_ids = parse_event_columns(columns)
+    limit = EVENTS_TABLE_LIMIT
     if demo_mode:
         data = demo_fixtures.list_events(
             site_id,
@@ -214,7 +225,7 @@ def events_table(
             sort=sort,
             order=order,
             page=page,
-            limit=25,
+            limit=limit,
             days=days,
             hours=hours,
             tz_name=tz,
@@ -228,23 +239,31 @@ def events_table(
             sort=sort,
             order=order,
             page=page,
-            limit=25,
+            limit=limit,
             days=days,
             hours=hours,
             tz_name=tz,
         )
     rows = data["items"]
+    headers = _events_table_headers(
+        total=int(data["total"]),
+        page=int(data["page"]),
+        limit=int(data["limit"]),
+    )
     if not rows:
-        return (
-            f'<tr><td colspan="{len(col_ids)}" class="text-muted">'
-            "No events match your filters</td></tr>"
+        return HTMLResponse(
+            content=(
+                f'<tr><td colspan="{len(col_ids)}" class="text-muted">'
+                "No events match your filters</td></tr>"
+            ),
+            headers=headers,
         )
 
     out = []
     for e in rows:
         cells = _event_row_cells(e)
         out.append("<tr>" + "".join(cells[c] for c in col_ids if c in cells) + "</tr>")
-    return "\n".join(out)
+    return HTMLResponse(content="\n".join(out), headers=headers)
 
 
 @router.get("/sites-table", response_class=HTMLResponse)

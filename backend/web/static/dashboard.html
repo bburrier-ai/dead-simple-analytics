@@ -53,13 +53,22 @@
         </div>
       </div>
 
-      <div class="data-table-wrap card table-card">
-        <table class="data-table" id="events-table">
-          <thead>
-            <tr id="events-head"></tr>
-          </thead>
-          <tbody id="events-body"></tbody>
-        </table>
+      <div class="card table-card events-table-card">
+        <div class="data-table-wrap">
+          <table class="data-table" id="events-table">
+            <thead>
+              <tr id="events-head"></tr>
+            </thead>
+            <tbody id="events-body"></tbody>
+          </table>
+        </div>
+        <div class="table-footer events-pagination" id="events-pagination" hidden>
+          <span data-events-range></span>
+          <div class="events-pagination-actions">
+            <button type="button" class="btn" data-events-prev>Prev</button>
+            <button type="button" class="btn" data-events-next>Next</button>
+          </div>
+        </div>
       </div>
     </main>
 

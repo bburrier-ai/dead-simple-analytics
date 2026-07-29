@@ -30,6 +30,25 @@ def test_demo_list_events_and_chart_helpers():
     assert all(item["type"] == "click" for item in clicks["items"])
     assert all(item.get("visitor_hash") for item in clicks["items"])
 
+    paged = demo_fixtures.list_events(
+        demo_fixtures.DEMO_SITE_ID,
+        days=14,
+        tz_name="UTC",
+        page=1,
+        limit=25,
+    )
+    assert paged["total"] > 25
+    assert len(paged["items"]) == 25
+    page_two = demo_fixtures.list_events(
+        demo_fixtures.DEMO_SITE_ID,
+        days=14,
+        tz_name="UTC",
+        page=2,
+        limit=25,
+    )
+    assert len(page_two["items"]) >= 1
+    assert page_two["items"][0]["id"] != paged["items"][0]["id"]
+
     recent = demo_fixtures.list_events(demo_fixtures.DEMO_SITE_ID, hours=24)
     assert recent["total"] >= 1
 

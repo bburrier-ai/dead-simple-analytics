@@ -131,8 +131,11 @@ def test_partials_sites_and_empty_events(client):
     assert "data-copy-snippet=" in sites_html
 
     site_id = client.get("/api/sites").json()["items"][0]["id"]
-    empty = client.get(f"/partials/events-table?site_id={site_id}").text
-    assert "No events match" in empty
+    empty = client.get(f"/partials/events-table?site_id={site_id}")
+    assert "No events match" in empty.text
+    assert empty.headers.get("X-Events-Total") == "0"
+    assert empty.headers.get("X-Events-Page") == "1"
+    assert empty.headers.get("X-Events-Limit") == "25"
 
 
 def test_events_filter_query_and_type(client):
@@ -158,17 +161,28 @@ def test_events_filter_query_and_type(client):
 
     html = client.get(
         f"/partials/events-table?site_id={site['id']}&type=click&q=cta&sort=path&order=asc"
-    ).text
-    assert "click" in html
-    assert 'data-field="path"' in html
-    assert 'data-value="/pricing"' in html
-    assert 'data-filter="q"' in html
-    assert 'data-field="type"' in html
-    assert 'data-value="click"' in html
-    assert 'data-filter="type"' in html
-    assert 'data-field="track_id"' in html
-    assert 'data-value="cta-signup"' in html
-    assert 'data-field="visitor_hash"' in html
+    )
+    assert html.headers.get("X-Events-Total")
+    assert int(html.headers["X-Events-Total"]) >= 1
+    assert html.headers.get("X-Events-Page") == "1"
+    assert html.headers.get("X-Events-Limit") == "25"
+    assert "click" in html.text
+    assert 'data-field="path"' in html.text
+    assert 'data-value="/pricing"' in html.text
+    assert 'data-filter="q"' in html.text
+    assert 'data-field="type"' in html.text
+    assert 'data-value="click"' in html.text
+    assert 'data-filter="type"' in html.text
+    assert 'data-field="track_id"' in html.text
+    assert 'data-value="cta-signup"' in html.text
+    assert 'data-field="visitor_hash"' in html.text
+
+    page_two = client.get(
+        f"/partials/events-table?site_id={site['id']}&page=2"
+    )
+    assert page_two.status_code == 200
+    assert page_two.headers.get("X-Events-Page") == "2"
+    assert int(page_two.headers.get("X-Events-Total") or "0") >= 1
 
 
 def test_get_site_and_stats_hours(client):
