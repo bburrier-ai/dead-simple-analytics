@@ -3,7 +3,6 @@
  */
 (function () {
   let activeSiteId = null;
-  let chartPeriod = { unit: "days", value: 14 };
 
   const EVENT_COLUMN_LABELS = {
     occurred_at: "Time",
@@ -27,6 +26,54 @@
     "location",
   ];
   const COLUMNS_STORAGE_KEY = "dsa-events-columns";
+  const PERIOD_STORAGE_KEY = "dsa-chart-period";
+  const DEFAULT_CHART_PERIOD = { unit: "days", value: 14 };
+  const ALLOWED_CHART_PERIODS = [
+    { unit: "hours", value: 24 },
+    { unit: "days", value: 7 },
+    { unit: "days", value: 14 },
+    { unit: "days", value: 30 },
+    { unit: "days", value: 90 },
+  ];
+
+  function isAllowedChartPeriod(period) {
+    return ALLOWED_CHART_PERIODS.some(
+      (allowed) => allowed.unit === period.unit && allowed.value === period.value
+    );
+  }
+
+  function loadChartPeriod() {
+    try {
+      const raw = localStorage.getItem(PERIOD_STORAGE_KEY);
+      if (!raw) return { ...DEFAULT_CHART_PERIOD };
+      const parsed = JSON.parse(raw);
+      const period = {
+        unit: parsed?.unit === "hours" ? "hours" : "days",
+        value: parseInt(parsed?.value, 10),
+      };
+      if (!Number.isFinite(period.value) || !isAllowedChartPeriod(period)) {
+        return { ...DEFAULT_CHART_PERIOD };
+      }
+      return period;
+    } catch {
+      return { ...DEFAULT_CHART_PERIOD };
+    }
+  }
+
+  function saveChartPeriod(period) {
+    localStorage.setItem(PERIOD_STORAGE_KEY, JSON.stringify(period));
+  }
+
+  function syncPeriodPills() {
+    document.querySelectorAll(".period-pill").forEach((btn) => {
+      const unit = btn.dataset.period || "days";
+      const value = parseInt(btn.dataset.value, 10);
+      btn.classList.toggle(
+        "active",
+        unit === chartPeriod.unit && value === chartPeriod.value
+      );
+    });
+  }
 
   function loadEventColumns() {
     try {
@@ -48,6 +95,7 @@
     localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(cols));
   }
 
+  let chartPeriod = loadChartPeriod();
   let eventColumns = loadEventColumns();
   let eventsPage = 1;
   let eventsPageCount = 1;
@@ -724,12 +772,14 @@
 
     document.querySelectorAll(".period-pill").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        document.querySelectorAll(".period-pill").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        chartPeriod = {
+        const next = {
           unit: btn.dataset.period || "days",
           value: parseInt(btn.dataset.value, 10) || 14,
         };
+        if (!isAllowedChartPeriod(next)) return;
+        chartPeriod = next;
+        saveChartPeriod(chartPeriod);
+        syncPeriodPills();
         await loadChart();
         refreshEventsTable({ resetPage: true });
       });
@@ -747,6 +797,7 @@
 
   window.initDashboard = async function initDashboard() {
     bindControls();
+    syncPeriodPills();
     renderEventsHeader();
     activeSiteId = getActiveSiteId();
     if (activeSiteId) {
