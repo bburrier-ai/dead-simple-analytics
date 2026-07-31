@@ -13,6 +13,7 @@ from app.api.routers.partials import _format_time
 from app.api.schemas import CollectEvent
 from config.logging import JsonFormatter
 from core.exceptions import NotFoundError
+from core.models import EventType
 from core.rate_limit import SlidingWindowRateLimiter
 from db.repositories.events import EventsRepository
 from db.repositories.sites import SitesRepository
@@ -84,26 +85,23 @@ def test_auth_decode_token_error_paths():
 
 
 def test_collect_service_direct_error_paths():
-    service = CollectService()
-    conn = MagicMock()
+    engine = MagicMock()
+    ctx = MagicMock()
+    ctx.__enter__.return_value = MagicMock()
+    ctx.__exit__.return_value = False
+    engine.begin.return_value = ctx
+    service = CollectService(engine)
     site = {
         "id": uuid4(),
         "site_key": "sk_test",
+        "name": "Test",
         "allowed_domains": ["example.com"],
     }
     service.sites.get_by_site_key = MagicMock(return_value=site)
     service.events.insert = MagicMock(return_value=True)
 
-    with pytest.raises(Exception) as exc_info:
-        service.ingest(
-            conn,
-            {"site_key": "sk_test", "type": "pageview", "event_id": "bad"},
-            client_ip="127.0.0.1",
-            user_agent=None,
-            origin="https://example.com",
-            referer=None,
-        )
-    assert "Invalid event_id" in str(exc_info.value)
+    with pytest.raises(ValidationError):
+        CollectEvent(site_key="sk_test", type=EventType.pageview, event_id="bad")
 
     with pytest.raises(Exception) as exc_info:
         service._check_origin(["example.com"], None, None)
@@ -123,8 +121,13 @@ def test_collect_service_direct_error_paths():
 
 
 def test_sites_service_error_and_lookup_paths():
-    service = SitesService()
+    engine = MagicMock()
+    ctx = MagicMock()
     conn = MagicMock()
+    ctx.__enter__.return_value = conn
+    ctx.__exit__.return_value = False
+    engine.begin.return_value = ctx
+    service = SitesService(engine)
     user_id = uuid4()
     site_id = uuid4()
     service.repo = MagicMock()
@@ -132,12 +135,12 @@ def test_sites_service_error_and_lookup_paths():
     service.repo.site_key_in_use.return_value = False
     service.repo.update.return_value = None
     with pytest.raises(Exception) as exc_info:
-        service.update_site(conn, user_id, site_id, "Missing", ["example.com"], "sk_missing")
+        service.update_site(user_id, site_id, "Missing", ["example.com"], "sk_missing")
     assert "Site not found" in str(exc_info.value)
 
     service.repo.get_by_id.return_value = None
     with pytest.raises(Exception) as exc_info:
-        service.get_site(conn, user_id, site_id)
+        service.get_site(user_id, site_id)
     assert "Site not found" in str(exc_info.value)
 
     service.repo.get_by_id.return_value = {
@@ -146,15 +149,15 @@ def test_sites_service_error_and_lookup_paths():
         "site_key": "sk_found",
         "allowed_domains": ["example.com"],
     }
-    found = service.get_site(conn, user_id, site_id)
-    assert found["snippet"].endswith('data-site="sk_found"></script>')
+    found = service.get_site(user_id, site_id)
+    assert found.snippet.endswith('data-site="sk_found"></script>')
 
     with pytest.raises(Exception) as exc_info:
-        service.create_site(conn, user_id, "No domains", ["", " "])
+        service.create_site(user_id, "No domains", ["", " "])
     assert "At least one allowed domain" in str(exc_info.value)
 
     with pytest.raises(Exception) as exc_info:
-        service.update_site(conn, user_id, site_id, "Bad key", ["example.com"], "bad-key")
+        service.update_site(user_id, site_id, "Bad key", ["example.com"], "bad-key")
     assert "Site key must start with sk_" in str(exc_info.value)
 
 

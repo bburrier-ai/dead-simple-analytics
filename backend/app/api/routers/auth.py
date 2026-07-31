@@ -1,16 +1,13 @@
 from fastapi import APIRouter, Cookie, Request, Response
 
 from app.api.schemas import LoginRequest, UserResponse
-from app.dependencies import CurrentUser, DbConn
+from app.dependencies import AuthSvc, CurrentUser
 from config.settings import settings
 from core.csrf import generate_csrf_token, set_csrf_cookie, validate_csrf
 from core.exceptions import RateLimitError, UnauthorizedError
 from core.rate_limit import SlidingWindowRateLimiter
-from db.repositories.users import UsersRepository
-from services.auth import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-auth = AuthService()
 _login_limiter = SlidingWindowRateLimiter()
 
 
@@ -36,15 +33,17 @@ def csrf(response: Response) -> dict:
 
 
 @router.post("/login")
-def login(body: LoginRequest, request: Request, response: Response, conn: DbConn) -> dict:
+def login(
+    body: LoginRequest, request: Request, response: Response, auth: AuthSvc
+) -> dict:
     validate_csrf(request)
     _check_login_rate_limit(request)
     username = (body.username or "").strip()
     password = body.password or ""
-    user = UsersRepository().get_by_username(conn, username) if username and password else None
-    if not user or not auth.verify_password(password, user["password_hash"]):
+    user = auth.authenticate(username, password)
+    if not user:
         raise UnauthorizedError("Invalid username or password")
-    token = auth.create_token(user["id"])
+    token = auth.create_token(user.id)
     response.set_cookie(
         key=settings.session_cookie_name,
         value=token,
@@ -57,7 +56,7 @@ def login(body: LoginRequest, request: Request, response: Response, conn: DbConn
     csrf_token = generate_csrf_token()
     set_csrf_cookie(response, csrf_token)
     return {
-        "user": UserResponse(id=str(user["id"]), username=user["username"]).model_dump(),
+        "user": UserResponse(id=str(user.id), username=user.username).model_dump(),
         "csrf_token": csrf_token,
     }
 
@@ -79,13 +78,13 @@ def logout(request: Request, response: Response) -> dict:
 
 @router.get("/me")
 def me(user: CurrentUser) -> dict:
-    return {"id": str(user["id"]), "username": user["username"]}
+    return {"id": str(user.id), "username": user.username}
 
 
 @router.get("/session")
 def session(
     request: Request,
-    conn: DbConn,
+    auth: AuthSvc,
     session: str | None = Cookie(default=None, alias=settings.session_cookie_name),
 ) -> dict:
     token = session or request.cookies.get(settings.session_cookie_name)
@@ -94,9 +93,9 @@ def session(
     user_id = auth.decode_token_optional(token)
     if not user_id:
         return {"user": None}
-    user = UsersRepository().get_by_id(conn, user_id)
+    user = auth.get_user(user_id)
     if not user:
         return {"user": None}
     return {
-        "user": UserResponse(id=str(user["id"]), username=user["username"]).model_dump()
+        "user": UserResponse(id=str(user.id), username=user.username).model_dump()
     }

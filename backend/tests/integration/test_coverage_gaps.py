@@ -276,7 +276,7 @@ def test_collect_error_paths(client):
         },
         headers={"Origin": "http://localhost"},
     )
-    assert bad_type.status_code == 403
+    assert bad_type.status_code == 422
 
     no_origin = client.post(
         "/collect",

@@ -7,32 +7,26 @@ from sqlalchemy.pool import NullPool
 
 from config.settings import settings
 
-_engine: Engine | None = None
 
-
-def get_engine(url: str | None = None) -> Engine:
-    global _engine
+def create_db_engine(url: str | None = None) -> Engine:
+    """Create a new SQLAlchemy engine (caller owns lifecycle)."""
     target = url or settings.database_url
-    if _engine is None or str(_engine.url) != target:
-        # Tests open many short-lived connections; NullPool avoids exhausting Postgres.
-        kwargs: dict = {"pool_pre_ping": True}
-        if settings.app_env == "test" or "5434" in target:
-            kwargs["poolclass"] = NullPool
-        else:
-            kwargs["pool_size"] = 5
-        _engine = create_engine(target, **kwargs)
-    return _engine
+    # Tests open many short-lived connections; NullPool avoids exhausting Postgres.
+    kwargs: dict = {"pool_pre_ping": True}
+    if settings.app_env == "test" or "5434" in target:
+        kwargs["poolclass"] = NullPool
+    else:
+        kwargs["pool_size"] = 5
+    return create_engine(target, **kwargs)
 
 
-def check_db_connection(engine: Engine | None = None) -> bool:
-    eng = engine or get_engine()
-    with eng.connect() as conn:
+def check_db_connection(engine: Engine) -> bool:
+    with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
     return True
 
 
 @contextmanager
-def get_connection(url: str | None = None) -> Generator[Connection, None, None]:
-    engine = get_engine(url)
+def get_connection(engine: Engine) -> Generator[Connection, None, None]:
     with engine.begin() as conn:
         yield conn

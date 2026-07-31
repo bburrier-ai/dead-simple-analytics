@@ -4,15 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
 
-from app.dependencies import CurrentUser, DbConn, DemoMode
+from app.dependencies import CurrentUser, DemoMode, EventsSvc, SitesSvc
 from core.html import esc
+from core.serialize import serialize_row
 from demo import fixtures as demo_fixtures
-from services.events import EventsService
-from services.sites import SitesService
 
 router = APIRouter(prefix="/partials", tags=["partials"])
-events_service = EventsService()
-sites_service = SitesService()
 
 _EVENT_TYPE_LABELS = {
     "pageview": "view",
@@ -201,7 +198,7 @@ def _event_row_cells(e: dict) -> dict[str, str]:
 @router.get("/events-table", response_class=HTMLResponse)
 def events_table(
     user: CurrentUser,
-    conn: DbConn,
+    events_service: EventsSvc,
     demo_mode: DemoMode,
     site_id: UUID = Query(...),
     type: str = Query("all"),
@@ -232,7 +229,6 @@ def events_table(
         )
     else:
         data = events_service.list_events(
-            conn,
             site_id,
             event_type=type,
             q=q,
@@ -267,11 +263,13 @@ def events_table(
 
 
 @router.get("/sites-table", response_class=HTMLResponse)
-def sites_table(user: CurrentUser, conn: DbConn, demo_mode: DemoMode) -> str:
+def sites_table(user: CurrentUser, sites_service: SitesSvc, demo_mode: DemoMode) -> str:
     if demo_mode:
         sites = demo_fixtures.list_sites()
     else:
-        sites = sites_service.list_sites(conn, user["id"])
+        sites = [
+            serialize_row(site.model_dump()) for site in sites_service.list_sites(user.id)
+        ]
     if not sites:
         return '<tr><td colspan="5" class="text-muted">No sites yet - add one below.</td></tr>'
 

@@ -3,22 +3,39 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
+from app.api.schemas import CollectEvent
 from core.exceptions import ForbiddenError
+from core.models import EventType
 from db.migrations import _seed_admin
 from services.auth import AuthService
 from services.collect import CollectService
 
 
+def _engine_with_conn(conn: MagicMock | None = None) -> tuple[MagicMock, MagicMock]:
+    conn = conn or MagicMock()
+    engine = MagicMock()
+    ctx = MagicMock()
+    ctx.__enter__.return_value = conn
+    ctx.__exit__.return_value = False
+    engine.begin.return_value = ctx
+    return engine, conn
+
+
 def test_collect_missing_site_key_and_empty_domains():
-    svc = CollectService()
-    conn = MagicMock()
+    engine, _conn = _engine_with_conn()
+    svc = CollectService(engine)
     with pytest.raises(ForbiddenError, match="Missing site_key"):
         svc.ingest(
-            conn,
-            {"site_key": ""},
+            CollectEvent(
+                event_id="11111111-1111-1111-1111-111111111111",
+                site_key="  ",
+                type=EventType.pageview,
+            ).to_payload(),
             client_ip="1.1.1.1",
             user_agent=None,
             origin="https://a.com",
@@ -26,16 +43,15 @@ def test_collect_missing_site_key_and_empty_domains():
         )
 
     svc.sites.get_by_site_key = MagicMock(
-        return_value={"id": "x", "allowed_domains": ["", "  "]}
+        return_value={"id": uuid4(), "allowed_domains": ["", "  "], "name": "x", "site_key": "sk_x"}
     )
     with pytest.raises(ForbiddenError, match="no allowed domains"):
         svc.ingest(
-            conn,
-            {
-                "site_key": "sk_x",
-                "type": "pageview",
-                "event_id": "11111111-1111-1111-1111-111111111111",
-            },
+            CollectEvent(
+                event_id="11111111-1111-1111-1111-111111111111",
+                site_key="sk_x",
+                type=EventType.pageview,
+            ).to_payload(),
             client_ip=None,
             user_agent=None,
             origin="https://a.com",
@@ -44,20 +60,32 @@ def test_collect_missing_site_key_and_empty_domains():
 
 
 def test_collect_referer_and_invalid_event_id():
-    svc = CollectService()
-    conn = MagicMock()
+    with pytest.raises(ValidationError):
+        CollectEvent(site_key="sk_x", type=EventType.pageview, event_id="bad")
+
+    engine, _conn = _engine_with_conn()
+    svc = CollectService(engine)
     svc.sites.get_by_site_key = MagicMock(
-        return_value={"id": "x", "allowed_domains": ["example.com"]}
+        return_value={
+            "id": uuid4(),
+            "allowed_domains": ["example.com"],
+            "name": "x",
+            "site_key": "sk_x",
+        }
     )
-    with pytest.raises(ForbiddenError, match="Invalid event_id"):
-        svc.ingest(
-            conn,
-            {"site_key": "sk_x", "type": "pageview", "event_id": "bad"},
-            client_ip="1.1.1.1",
-            user_agent="ua",
-            origin=None,
-            referer="https://example.com/page",
-        )
+    svc.events.insert = MagicMock(return_value=True)
+    svc.ingest(
+        CollectEvent(
+            event_id="11111111-1111-1111-1111-111111111111",
+            site_key="sk_x",
+            type=EventType.pageview,
+        ).to_payload(),
+        client_ip="1.1.1.1",
+        user_agent="ua",
+        origin=None,
+        referer="https://example.com/page",
+    )
+    svc.events.insert.assert_called_once()
 
 
 def test_hash_password_and_seed_when_empty(monkeypatch):
@@ -75,8 +103,8 @@ def test_hash_password_and_seed_when_empty(monkeypatch):
 
     fake = FakeRepo()
     monkeypatch.setattr("db.migrations.UsersRepository", lambda: fake)
-    monkeypatch.setattr("db.migrations.get_connection", lambda: _ConnCtx())
-    _seed_admin()
+    monkeypatch.setattr("db.migrations.get_connection", lambda _engine: _ConnCtx())
+    _seed_admin(MagicMock())
     assert fake.inserted[0]
 
 
@@ -96,16 +124,15 @@ def test_users_repository_insert_returns_row():
     conn.execute.assert_called_once()
 
 
-def test_get_engine_pool_size_outside_test(monkeypatch):
+def test_create_db_engine_pool_size_outside_test(monkeypatch):
     from sqlalchemy.pool import NullPool
 
     from db import connection
 
     monkeypatch.setattr(connection.settings, "app_env", "production")
-    connection._engine = None
-    engine = connection.get_engine("sqlite+pysqlite:///:memory:")
+    engine = connection.create_db_engine("sqlite+pysqlite:///:memory:")
     assert not isinstance(engine.pool, NullPool)
-    connection._engine = None
+    engine.dispose()
 
 
 class _ConnCtx:

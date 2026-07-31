@@ -1,13 +1,13 @@
 import hashlib
 import re
 from urllib.parse import urlparse
-from uuid import UUID
 
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Engine
 
 from config.settings import settings
 from core.exceptions import ForbiddenError, NotFoundError, RateLimitError
 from core.live import live_hub
+from core.models import CollectPayload, EventRecord, Site
 from core.rate_limit import SlidingWindowRateLimiter
 from db.repositories.events import EventsRepository
 from db.repositories.sites import SitesRepository
@@ -18,76 +18,61 @@ _TRACK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
 
 class CollectService:
-    def __init__(self) -> None:
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._engine = engine
         self.sites = SitesRepository()
         self.events = EventsRepository()
 
     def ingest(
         self,
-        conn: Connection,
-        payload: dict,
+        payload: CollectPayload,
         *,
         client_ip: str | None,
         user_agent: str | None,
         origin: str | None,
         referer: str | None,
     ) -> None:
-        site_key = (payload.get("site_key") or "").strip()
+        site_key = payload.site_key.strip()
         if not site_key:
             raise ForbiddenError("Missing site_key")
 
-        site = self.sites.get_by_site_key(conn, site_key)
-        if not site:
-            raise NotFoundError("Unknown site")
+        with self._require_engine().begin() as conn:
+            site_row = self.sites.get_by_site_key(conn, site_key)
+            if not site_row:
+                raise NotFoundError("Unknown site")
+            site = Site.model_validate(site_row)
 
-        self._check_origin(site.get("allowed_domains") or [], origin, referer)
-        ip_hash = self._hash_ip(client_ip)
-        self._rate_limit(site_key, ip_hash)
+            self._check_origin(site.allowed_domains, origin, referer)
+            ip_hash = self._hash_ip(client_ip)
+            self._rate_limit(site_key, ip_hash)
 
-        event_type = (payload.get("type") or "").strip()
-        if event_type not in {"pageview", "click", "hover", "custom"}:
-            raise ForbiddenError("Invalid event type")
+            event = EventRecord(
+                site_id=site.id,
+                event_id=payload.event_id,
+                type=payload.type,
+                path=self._clip(payload.path, 512),
+                title=self._clip(payload.title, 512),
+                track_id=self._normalize_track_id(payload.track_id),
+                referrer=self._clip(payload.referrer, 1024) or None,
+                visitor_id=self._clip(payload.visitor_id, 64) or None,
+                visitor_hash=self._normalize_visitor_hash(payload.visitor_hash),
+                session_id=self._clip(payload.session_id, 64) or None,
+                ip_hash=ip_hash,
+                country=None,
+                region=None,
+                city=None,
+                user_agent=self._clip(user_agent, 512) or None,
+            )
+            inserted = self.events.insert(conn, event.to_db_params())
 
-        event_id = self._normalize_event_id(payload.get("event_id"))
-        visitor_id = self._clip(payload.get("visitor_id"), 64) or None
-        visitor_hash = self._normalize_visitor_hash(payload.get("visitor_hash"))
-        session_id = self._clip(payload.get("session_id"), 64) or None
-
-        inserted = self.events.insert(
-            conn,
-            {
-                "site_id": site["id"],
-                "event_id": event_id,
-                "type": event_type,
-                "path": self._clip(payload.get("path"), 512),
-                "title": self._clip(payload.get("title"), 512),
-                "track_id": self._normalize_track_id(payload.get("track_id")),
-                "referrer": self._clip(payload.get("referrer"), 1024) or None,
-                "visitor_id": visitor_id,
-                "visitor_hash": visitor_hash,
-                "session_id": session_id,
-                "ip_hash": ip_hash,
-                "country": None,
-                "region": None,
-                "city": None,
-                "user_agent": self._clip(user_agent, 512) or None,
-            },
-        )
         if not inserted:
             return
 
-        live_hub.publish({"site_id": str(site["id"])})
+        live_hub.publish({"site_id": str(site.id)})
 
     def _clip(self, value: object | None, max_len: int) -> str:
         text = "" if value is None else str(value)
         return text[:max_len]
-
-    def _normalize_event_id(self, value: object | None) -> str:
-        raw = self._clip(value, 36)
-        try:
-            return str(UUID(raw))
-        except ValueError as exc:
-            raise ForbiddenError("Invalid event_id") from exc
 
     def _normalize_track_id(self, value: object | None) -> str | None:
         raw = self._clip(value, 128)
@@ -145,3 +130,8 @@ class CollectService:
             return None
         parsed = urlparse(value)
         return (parsed.hostname or "").lower() or None
+
+    def _require_engine(self) -> Engine:
+        if self._engine is None:
+            raise RuntimeError("CollectService requires a database engine")
+        return self._engine

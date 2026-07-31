@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Engine
 
 from db.repositories.events import EventsRepository
 
@@ -17,12 +17,12 @@ def resolve_tz(name: str | None) -> ZoneInfo:
 
 
 class StatsService:
-    def __init__(self) -> None:
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._engine = engine
         self.events = EventsRepository()
 
     def visits(
         self,
-        conn: Connection,
         site_id: UUID,
         *,
         days: int = 14,
@@ -33,13 +33,17 @@ class StatsService:
         start_local = end_local - timedelta(days=max(1, days) - 1)
         start_dt = datetime.combine(start_local, datetime.min.time(), tz)
         end_dt = datetime.combine(end_local + timedelta(days=1), datetime.min.time(), tz)
-        rows = self.events.visits_series(
-            conn,
-            site_id,
-            date_from=start_local.isoformat(),
-            date_to=end_local.isoformat(),
-            tz=str(tz),
-        )
+        with self._require_engine().begin() as conn:
+            rows = self.events.visits_series(
+                conn,
+                site_id,
+                date_from=start_local.isoformat(),
+                date_to=end_local.isoformat(),
+                tz=str(tz),
+            )
+            visitors = self.events.count_visitors(
+                conn, site_id, start=start_dt.astimezone(UTC), end=end_dt.astimezone(UTC)
+            )
         by_day = {str(r["day"]): r for r in rows}
         series = []
         cursor = start_local
@@ -61,15 +65,12 @@ class StatsService:
             "pageviews": sum(s["pageviews"] for s in series),
             "clicks": sum(s["clicks"] for s in series),
             "hovers": sum(s["hovers"] for s in series),
-            "visitors": self.events.count_visitors(
-                conn, site_id, start=start_dt.astimezone(UTC), end=end_dt.astimezone(UTC)
-            ),
+            "visitors": visitors,
         }
         return {"series": series, "totals": totals}
 
     def visits_hours(
         self,
-        conn: Connection,
         site_id: UUID,
         *,
         hours: int = 24,
@@ -79,9 +80,11 @@ class StatsService:
         # Rolling window ending at now (not floored to the hour).
         end = datetime.now(UTC)
         start = end - timedelta(hours=max(1, hours))
-        rows = self.events.visits_series_hourly(
-            conn, site_id, start=start, end=end, tz=str(tz)
-        )
+        with self._require_engine().begin() as conn:
+            rows = self.events.visits_series_hourly(
+                conn, site_id, start=start, end=end, tz=str(tz)
+            )
+            visitors = self.events.count_visitors(conn, site_id, start=start, end=end)
         by_hour: dict[datetime, dict] = {}
         for row in rows:
             hour = row["hour"]
@@ -113,6 +116,11 @@ class StatsService:
             "pageviews": sum(s["pageviews"] for s in series),
             "clicks": sum(s["clicks"] for s in series),
             "hovers": sum(s["hovers"] for s in series),
-            "visitors": self.events.count_visitors(conn, site_id, start=start, end=end),
+            "visitors": visitors,
         }
         return {"series": series, "totals": totals}
+
+    def _require_engine(self) -> Engine:
+        if self._engine is None:
+            raise RuntimeError("StatsService requires a database engine")
+        return self._engine

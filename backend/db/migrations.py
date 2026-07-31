@@ -3,6 +3,7 @@ from pathlib import Path
 
 from alembic.config import Config
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from alembic import command
 from config.settings import settings
@@ -14,17 +15,17 @@ logger = logging.getLogger(__name__)
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_migrations() -> None:
+def run_migrations(engine: Engine) -> None:
     cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     cfg.set_main_option("sqlalchemy.url", settings.database_url)
     command.upgrade(cfg, "head")
-    _seed_admin()
+    _seed_admin(engine)
 
 
-def _seed_admin() -> None:
+def _seed_admin(engine: Engine) -> None:
     auth = AuthService()
-    with get_connection() as conn:
+    with get_connection(engine) as conn:
         # Legacy installs renamed email→username but kept admin@example.com as the value.
         conn.execute(
             text(

@@ -2,66 +2,71 @@ import json
 import re
 from uuid import UUID
 
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Engine
 
 from config.settings import settings
 from core.exceptions import AppError, NotFoundError
+from core.models import Site
 from db.repositories.sites import SitesRepository
 
 SITE_KEY_RE = re.compile(r"^sk_[A-Za-z0-9_-]+$")
 
 
 class SitesService:
-    def __init__(self) -> None:
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._engine = engine
         self.repo = SitesRepository()
 
-    def list_sites(self, conn: Connection, user_id: UUID) -> list[dict]:
-        return self.repo.list_for_user(conn, user_id)
+    def list_sites(self, user_id: UUID) -> list[Site]:
+        with self._require_engine().begin() as conn:
+            rows = self.repo.list_for_user(conn, user_id)
+        return [Site.model_validate(row) for row in rows]
 
     def create_site(
         self,
-        conn: Connection,
         user_id: UUID,
         name: str,
         allowed_domains: list[str],
-    ) -> dict:
+    ) -> Site:
         domains = self._normalize_domains(allowed_domains)
-        site = self.repo.insert(conn, user_id, name.strip(), domains)
-        site["snippet"] = self.snippet_for(site["site_key"])
-        return site
+        with self._require_engine().begin() as conn:
+            row = self.repo.insert(conn, user_id, name.strip(), domains)
+        site = Site.model_validate(row)
+        return site.model_copy(update={"snippet": self.snippet_for(site.site_key)})
 
     def update_site(
         self,
-        conn: Connection,
         user_id: UUID,
         site_id: UUID,
         name: str,
         allowed_domains: list[str],
         site_key: str,
-    ) -> dict:
+    ) -> Site:
         domains = self._normalize_domains(allowed_domains)
         normalized_key = self._normalize_site_key(site_key)
-        if self.repo.site_key_in_use(conn, normalized_key, exclude_id=site_id):
-            raise AppError("Site key is already in use")
-        site = self.repo.update(
-            conn,
-            site_id,
-            user_id,
-            name.strip(),
-            normalized_key,
-            domains,
-        )
-        if not site:
+        with self._require_engine().begin() as conn:
+            if self.repo.site_key_in_use(conn, normalized_key, exclude_id=site_id):
+                raise AppError("Site key is already in use")
+            row = self.repo.update(
+                conn,
+                site_id,
+                user_id,
+                name.strip(),
+                normalized_key,
+                domains,
+            )
+        if not row:
             raise NotFoundError("Site not found")
-        site["snippet"] = self.snippet_for(site["site_key"])
-        return site
+        site = Site.model_validate(row)
+        return site.model_copy(update={"snippet": self.snippet_for(site.site_key)})
 
-    def get_site(self, conn: Connection, user_id: UUID, site_id: UUID) -> dict:
-        site = self.repo.get_by_id(conn, site_id, user_id)
-        if not site:
+    def get_site(self, user_id: UUID, site_id: UUID) -> Site:
+        with self._require_engine().begin() as conn:
+            row = self.repo.get_by_id(conn, site_id, user_id)
+        if not row:
             raise NotFoundError("Site not found")
-        site["snippet"] = self.snippet_for(site["site_key"])
-        return site
+        site = Site.model_validate(row)
+        return site.model_copy(update={"snippet": self.snippet_for(site.site_key)})
 
     def snippet_for(self, site_key: str) -> str:
         base = settings.public_base_url.rstrip("/")
@@ -104,3 +109,8 @@ class SitesService:
         if not SITE_KEY_RE.match(key):
             raise AppError("Site key must start with sk_ and use letters, numbers, _ or -")
         return key
+
+    def _require_engine(self) -> Engine:
+        if self._engine is None:
+            raise RuntimeError("SitesService requires a database engine")
+        return self._engine

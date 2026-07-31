@@ -5,15 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from app.api.schemas import CollectEvent
-from app.dependencies import DbConn
-from services.collect import CollectService
+from app.dependencies import CollectSvc
 
 router = APIRouter(tags=["collect"])
-service = CollectService()
 
 
 @router.post("/collect")
-async def collect(request: Request, conn: DbConn) -> dict:
+async def collect(request: Request, service: CollectSvc) -> dict:
     # Accept application/json and text/plain (sendBeacon-friendly; avoids CORS preflight).
     raw = await request.body()
     try:
@@ -33,8 +31,7 @@ async def collect(request: Request, conn: DbConn) -> dict:
 
     client_ip = request.client.host if request.client else None
     service.ingest(
-        conn,
-        body.model_dump(),
+        body.to_payload(),
         client_ip=client_ip,
         user_agent=request.headers.get("user-agent"),
         origin=request.headers.get("origin"),

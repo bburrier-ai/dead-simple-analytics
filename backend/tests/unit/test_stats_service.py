@@ -9,7 +9,12 @@ from services.stats import StatsService, resolve_tz
 
 
 def _service_with_repo(repo: MagicMock) -> StatsService:
-    service = StatsService()
+    engine = MagicMock()
+    ctx = MagicMock()
+    ctx.__enter__.return_value = MagicMock()
+    ctx.__exit__.return_value = False
+    engine.begin.return_value = ctx
+    service = StatsService(engine)
     service.events = repo
     return service
 
@@ -61,7 +66,7 @@ def test_visits_totals_sum_event_counts():
 
     original_datetime = _patch_now(stats_module, fixed_now)
     try:
-        result = service.visits(MagicMock(), site_id, days=2)
+        result = service.visits(site_id, days=2)
     finally:
         stats_module.datetime = original_datetime
 
@@ -99,7 +104,7 @@ def test_visits_period_visitors_uses_distinct_count_not_daily_max():
 
     original_datetime = _patch_now(stats_module, fixed_now)
     try:
-        result = service.visits(MagicMock(), site_id, days=2)
+        result = service.visits(site_id, days=2)
     finally:
         stats_module.datetime = original_datetime
 
@@ -131,7 +136,7 @@ def test_visits_hours_period_visitors_uses_distinct_count():
 
     original_datetime = _patch_now(stats_module, fixed_now)
     try:
-        result = service.visits_hours(MagicMock(), site_id, hours=3)
+        result = service.visits_hours(site_id, hours=3)
     finally:
         stats_module.datetime = original_datetime
 
@@ -163,7 +168,7 @@ def test_visits_hours_accepts_naive_hour_rows():
 
     original_datetime = _patch_now(stats_module, fixed_now)
     try:
-        result = service.visits_hours(MagicMock(), site_id, hours=1, tz_name="UTC")
+        result = service.visits_hours(site_id, hours=1, tz_name="UTC")
     finally:
         stats_module.datetime = original_datetime
 
@@ -185,7 +190,7 @@ def test_visits_hours_uses_client_tz_buckets_and_snaps_end_to_now():
     original_datetime = _patch_now(stats_module, fixed_now)
     try:
         result = service.visits_hours(
-            MagicMock(), site_id, hours=24, tz_name="America/Los_Angeles"
+            site_id, hours=24, tz_name="America/Los_Angeles"
         )
     finally:
         stats_module.datetime = original_datetime

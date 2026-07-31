@@ -27,7 +27,13 @@ from config.settings import settings
 from core.csrf import validate_csrf
 from core.exceptions import AppError, ForbiddenError, UnauthorizedError
 from core.live import live_hub
+from db.connection import create_db_engine
 from db.migrations import run_migrations
+from services.auth import AuthService
+from services.collect import CollectService
+from services.events import EventsService
+from services.sites import SitesService
+from services.stats import StatsService
 from web.paths import STATIC_DIR
 
 logger = logging.getLogger(__name__)
@@ -35,14 +41,23 @@ COMPONENTS_DIR = Path("/components/public")
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     setup_logging()
-    run_migrations()
+    engine = create_db_engine()
+    app.state.db_engine = engine
+    app.state.auth_service = AuthService(engine)
+    app.state.collect_service = CollectService(engine)
+    app.state.sites_service = SitesService(engine)
+    app.state.events_service = EventsService(engine)
+    app.state.stats_service = StatsService(engine)
+    run_migrations(engine)
     live_hub.bind_loop(asyncio.get_running_loop())
     try:
         yield
     finally:
         live_hub.unbind_loop()
+        engine.dispose()
+        app.state.db_engine = None
 
 
 def create_app() -> FastAPI:

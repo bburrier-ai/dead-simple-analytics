@@ -2,18 +2,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from app.dependencies import CurrentUser, DbConn, DemoMode
+from app.dependencies import CurrentUser, DemoMode, EventsSvc
 from demo import fixtures as demo_fixtures
-from services.events import EventsService
 
 router = APIRouter(prefix="/events", tags=["events"])
-service = EventsService()
 
 
 @router.get("")
 def list_events(
     user: CurrentUser,
-    conn: DbConn,
+    service: EventsSvc,
     demo_mode: DemoMode,
     site_id: UUID = Query(...),
     type: str = Query("all"),
@@ -41,7 +39,6 @@ def list_events(
             tz_name=tz,
         )
     return service.list_events(
-        conn,
         site_id,
         event_type=type,
         q=q,
