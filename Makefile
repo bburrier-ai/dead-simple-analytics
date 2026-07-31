@@ -1,8 +1,11 @@
 -include .env
 export
 
+COMPOSE_TEST_PROJECT ?= dsa-test
+TEST_POSTGRES_PORT ?= 5434
+
 COMPOSE := docker compose -f docker-compose.yml
-COMPOSE_TEST := docker compose -p dsa-test -f docker-compose.test.yml
+COMPOSE_TEST := docker compose -p $(COMPOSE_TEST_PROJECT) -f docker-compose.test.yml
 BACKEND_DIR := backend
 
 POSTGRES_USER ?= dsa
@@ -35,7 +38,7 @@ help:
 	@echo "  make test-unit       Run unit tests only"
 	@echo "  make test-watchdog   Run deployment watchdog tests"
 	@echo "  make ci              lint + audit + test + watchdog"
-	@echo "  make test-up         Start test Postgres on :5434"
+	@echo "  make test-up         Start test Postgres on :$(TEST_POSTGRES_PORT)"
 	@echo "  make test-down       Stop test Postgres"
 	@echo ""
 	@echo "  make db migrate      Apply Alembic migrations"
@@ -71,16 +74,24 @@ audit:
 	cd $(BACKEND_DIR) && uvx pip-audit -r .requirements-audit.txt --disable-pip --no-deps
 
 test-up: docker-check
-	$(COMPOSE_TEST) up -d
+	$(COMPOSE_TEST) up -d --wait
 
 test-down:
 	$(COMPOSE_TEST) down -v
 
-test: test-up
-	@echo "Waiting for test Postgres..."
-	@sleep 5
-	cd $(BACKEND_DIR) && uv run pytest -v
-	$(MAKE) test-down
+test: docker-check
+	@set -eu; \
+	project="dsa-test-$$(date +%s)-$$$$"; \
+	compose() { TEST_POSTGRES_PORT=0 docker compose -p "$$project" -f docker-compose.test.yml "$$@"; }; \
+	cleanup() { compose down -v; }; \
+	trap cleanup EXIT; \
+	compose up -d --wait; \
+	published="$$(compose port postgres 5432)"; \
+	port="$${published##*:}"; \
+	test -n "$$port"; \
+	(cd $(BACKEND_DIR) && \
+	TEST_DATABASE_URL="postgresql+psycopg://dsa:dsa_dev_password@127.0.0.1:$$port/dead_simple_analytics_test" \
+	uv run pytest -v)
 
 test-unit:
 	cd $(BACKEND_DIR) && uv run pytest tests/unit -v
