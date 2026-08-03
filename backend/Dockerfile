@@ -6,9 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 RUN pip install --no-cache-dir uv
 
 WORKDIR /app
-COPY backend/pyproject.toml backend/uv.lock* ./
+COPY backend/pyproject.toml backend/uv.lock ./
 COPY backend/ ./
-RUN uv sync --frozen --no-dev 2>/dev/null || uv sync --no-dev
+# --frozen verifies lockfile hashes; fails closed if uv.lock is missing/stale.
+RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000

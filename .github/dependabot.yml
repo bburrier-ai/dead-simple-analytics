@@ -1,0 +1,12 @@
+# Keep Actions and Python deps current so advisories surface as PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly

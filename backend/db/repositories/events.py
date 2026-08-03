@@ -1,3 +1,10 @@
+"""Event persistence queries.
+
+S608 (SQL construction) is ignored for this module: dynamic fragments are
+allowlisted identifiers / fixed predicates, and all user values are bound
+parameters (:site_id, :q, …), never interpolated into SQL text.
+"""
+
 from datetime import datetime
 from uuid import UUID
 

@@ -14,7 +14,7 @@ USERNAME ?= admin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help docker-check up down status logs sync lint format test test-unit test-watchdog ci test-up test-down db install
+.PHONY: help docker-check up down status logs sync lint format audit test test-unit test-watchdog ci test-up test-down db install
 
 help:
 	@echo "Dead Simple Analytics - available targets:"
@@ -26,14 +26,15 @@ help:
 	@echo ""
 	@echo "  make install         Production install as current user (DOMAIN=...)"
 	@echo ""
-	@echo "  make sync            Install/update backend Python deps (uv)"
-	@echo "  make lint            Run backend ruff lint"
+	@echo "  make sync            Install backend deps from hashed uv.lock (--frozen)"
+	@echo "  make lint            Run backend ruff lint (includes security rules)"
 	@echo "  make format          Run backend ruff format + fix"
+	@echo "  make audit           Scan locked deps for known CVEs (pip-audit)"
 	@echo ""
 	@echo "  make test            Run backend tests (unit+integration, 100% coverage gate)"
 	@echo "  make test-unit       Run unit tests only"
 	@echo "  make test-watchdog   Run deployment watchdog tests"
-	@echo "  make ci              lint + test"
+	@echo "  make ci              lint + audit + test + watchdog"
 	@echo "  make test-up         Start test Postgres on :5434"
 	@echo "  make test-down       Stop test Postgres"
 	@echo ""
@@ -57,13 +58,17 @@ logs:
 	$(COMPOSE) logs -f
 
 sync:
-	cd $(BACKEND_DIR) && uv sync --all-groups
+	cd $(BACKEND_DIR) && uv sync --frozen --all-groups
 
 lint:
 	cd $(BACKEND_DIR) && uv run ruff check .
 
 format:
 	cd $(BACKEND_DIR) && uv run ruff check . --fix && uv run ruff format .
+
+audit:
+	cd $(BACKEND_DIR) && uv export --frozen --no-dev --no-emit-project -o .requirements-audit.txt
+	cd $(BACKEND_DIR) && uvx pip-audit -r .requirements-audit.txt --disable-pip --no-deps
 
 test-up: docker-check
 	$(COMPOSE_TEST) up -d
@@ -83,7 +88,7 @@ test-unit:
 test-watchdog:
 	bash deploy/test_watchdog.sh
 
-ci: lint test test-watchdog
+ci: lint audit test test-watchdog
 
 install:
 	@if [ -z "$(DOMAIN)" ]; then \
