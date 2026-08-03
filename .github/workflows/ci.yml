@@ -36,12 +36,15 @@ jobs:
         run: uv python install 3.12
         working-directory: backend
 
-      - name: Install dependencies
-        run: uv sync --all-groups
+      - name: Install dependencies (frozen + hashed lockfile)
+        run: uv sync --frozen --all-groups
         working-directory: backend
 
-      - name: Lint
+      - name: Lint (includes Ruff security rules)
         run: make lint
+
+      - name: Dependency audit (pip-audit)
+        run: make audit
 
       - name: Test
         run: cd backend && uv run pytest -v --cov-report=term-missing
@@ -50,3 +53,50 @@ jobs:
 
       - name: Test deployment watchdog
         run: make test-watchdog
+
+  bandit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run Bandit
+        run: >
+          uvx bandit -r backend
+          -x backend/tests,backend/.venv,backend/alembic
+          -ll
+
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run Semgrep
+        run: >
+          uvx semgrep scan
+          --config p/python
+          --config p/security-audit
+          --error
+          --exclude tests
+          --exclude .venv
+          backend
+
+  osv-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OSV-Scanner
+        run: |
+          curl -sSfL \
+            "https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_amd64" \
+            -o /usr/local/bin/osv-scanner
+          chmod +x /usr/local/bin/osv-scanner
+
+      - name: Run OSV-Scanner
+        run: osv-scanner scan source --lockfile=backend/uv.lock

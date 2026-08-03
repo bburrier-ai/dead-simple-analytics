@@ -30,7 +30,14 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+# E/F/I/UP: style + bugs; S: flake8-bandit security rules (defense in depth).
+select = ["E", "F", "I", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use asserts and fixture secrets; settings defaults are local/dev only (env overrides in prod).
+"tests/**" = ["S101", "S105", "S106"]
+"config/settings.py" = ["S105"]
+"db/repositories/events.py" = ["S608"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

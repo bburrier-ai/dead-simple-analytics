@@ -1,3 +1,10 @@
+"""Event persistence queries.
+
+S608 (SQL construction) is ignored for this module: dynamic fragments are
+allowlisted identifiers / fixed predicates, and all user values are bound
+parameters (:site_id, :q, …), never interpolated into SQL text.
+"""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -5,8 +12,60 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 # Prefer fingerprint hash; fall back to first-party visitor_id.
-VISITOR_IDENTITY_SQL = (
-    "COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, ''))"
+# Inlined into static SQL below (no f-string interpolation).
+VISITOR_IDENTITY_SQL = "COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, ''))"
+
+_COUNT_VISITORS_SQL = text(
+    """
+    SELECT COUNT(DISTINCT COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, '')))
+    FROM events
+    WHERE site_id = :site_id
+      AND COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, '')) IS NOT NULL
+      AND occurred_at >= :start
+      AND occurred_at < :end
+    """
+)
+
+_VISITS_SERIES_HOURLY_SQL = text(
+    """
+    SELECT
+        date_trunc('hour', occurred_at AT TIME ZONE :tz) AT TIME ZONE :tz AS hour,
+        COUNT(*) FILTER (WHERE type = 'pageview') AS pageviews,
+        COUNT(*) FILTER (WHERE type = 'click') AS clicks,
+        COUNT(*) FILTER (WHERE type = 'hover') AS hovers,
+        COUNT(DISTINCT COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, '')))
+            FILTER (
+                WHERE COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, ''))
+                IS NOT NULL
+            ) AS visitors
+    FROM events
+    WHERE site_id = :site_id
+      AND occurred_at >= :start
+      AND occurred_at < :end
+    GROUP BY 1
+    ORDER BY 1
+    """
+)
+
+_VISITS_SERIES_DAILY_SQL = text(
+    """
+    SELECT
+        date_trunc('day', occurred_at AT TIME ZONE :tz)::date AS day,
+        COUNT(*) FILTER (WHERE type = 'pageview') AS pageviews,
+        COUNT(*) FILTER (WHERE type = 'click') AS clicks,
+        COUNT(*) FILTER (WHERE type = 'hover') AS hovers,
+        COUNT(DISTINCT COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, '')))
+            FILTER (
+                WHERE COALESCE(NULLIF(visitor_hash, ''), NULLIF(visitor_id, ''))
+                IS NOT NULL
+            ) AS visitors
+    FROM events
+    WHERE site_id = :site_id
+      AND occurred_at >= CAST(:date_from AS timestamp) AT TIME ZONE :tz
+      AND occurred_at < (CAST(:date_to AS date) + 1)::timestamp AT TIME ZONE :tz
+    GROUP BY 1
+    ORDER BY 1
+    """
 )
 
 
@@ -87,25 +146,25 @@ class EventsRepository:
             )
             params["q"] = f"%{q}%"
 
+        # WHERE predicates are fixed strings; ORDER BY uses an allowlisted column
+        # name and ASC/DESC only. User values are bind params, not interpolated.
         where = " AND ".join(filters)
-        count_row = conn.execute(
-            text(f"SELECT COUNT(*) FROM events WHERE {where}"),
-            params,
-        ).scalar_one()
-
-        rows = conn.execute(
-            text(
-                f"""
-                SELECT id, type, path, title, track_id, referrer, visitor_id, visitor_hash,
-                       session_id, country, region, city, occurred_at
-                FROM events
-                WHERE {where}
-                ORDER BY {sort_col} {order_sql}
-                LIMIT :limit OFFSET :offset
-                """
-            ),
-            params,
-        ).mappings()
+        count_sql = "SELECT COUNT(*) FROM events WHERE " + where  # nosec B608
+        list_sql = (
+            "SELECT id, type, path, title, track_id, referrer, visitor_id, visitor_hash, "  # nosec B608
+            "session_id, country, region, city, occurred_at "
+            "FROM events WHERE "
+            + where
+            + " ORDER BY "
+            + sort_col
+            + " "
+            + order_sql
+            + " LIMIT :limit OFFSET :offset"
+        )
+        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+        count_row = conn.execute(text(count_sql), params).scalar_one()
+        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+        rows = conn.execute(text(list_sql), params).mappings()
         return [dict(r) for r in rows], int(count_row)
 
     def count_visitors(
@@ -117,16 +176,7 @@ class EventsRepository:
         end: datetime,
     ) -> int:
         total = conn.execute(
-            text(
-                f"""
-                SELECT COUNT(DISTINCT {VISITOR_IDENTITY_SQL})
-                FROM events
-                WHERE site_id = :site_id
-                  AND {VISITOR_IDENTITY_SQL} IS NOT NULL
-                  AND occurred_at >= :start
-                  AND occurred_at < :end
-                """
-            ),
+            _COUNT_VISITORS_SQL,
             {"site_id": site_id, "start": start, "end": end},
         ).scalar_one()
         return int(total or 0)
@@ -141,23 +191,7 @@ class EventsRepository:
         tz: str = "UTC",
     ) -> list[dict]:
         rows = conn.execute(
-            text(
-                f"""
-                SELECT
-                    date_trunc('hour', occurred_at AT TIME ZONE :tz) AT TIME ZONE :tz AS hour,
-                    COUNT(*) FILTER (WHERE type = 'pageview') AS pageviews,
-                    COUNT(*) FILTER (WHERE type = 'click') AS clicks,
-                    COUNT(*) FILTER (WHERE type = 'hover') AS hovers,
-                    COUNT(DISTINCT {VISITOR_IDENTITY_SQL})
-                        FILTER (WHERE {VISITOR_IDENTITY_SQL} IS NOT NULL) AS visitors
-                FROM events
-                WHERE site_id = :site_id
-                  AND occurred_at >= :start
-                  AND occurred_at < :end
-                GROUP BY 1
-                ORDER BY 1
-                """
-            ),
+            _VISITS_SERIES_HOURLY_SQL,
             {"site_id": site_id, "start": start, "end": end, "tz": tz},
         ).mappings()
         return [dict(r) for r in rows]
@@ -172,23 +206,7 @@ class EventsRepository:
         tz: str = "UTC",
     ) -> list[dict]:
         rows = conn.execute(
-            text(
-                f"""
-                SELECT
-                    date_trunc('day', occurred_at AT TIME ZONE :tz)::date AS day,
-                    COUNT(*) FILTER (WHERE type = 'pageview') AS pageviews,
-                    COUNT(*) FILTER (WHERE type = 'click') AS clicks,
-                    COUNT(*) FILTER (WHERE type = 'hover') AS hovers,
-                    COUNT(DISTINCT {VISITOR_IDENTITY_SQL})
-                        FILTER (WHERE {VISITOR_IDENTITY_SQL} IS NOT NULL) AS visitors
-                FROM events
-                WHERE site_id = :site_id
-                  AND occurred_at >= CAST(:date_from AS timestamp) AT TIME ZONE :tz
-                  AND occurred_at < (CAST(:date_to AS date) + 1)::timestamp AT TIME ZONE :tz
-                GROUP BY 1
-                ORDER BY 1
-                """
-            ),
+            _VISITS_SERIES_DAILY_SQL,
             {"site_id": site_id, "date_from": date_from, "date_to": date_to, "tz": tz},
         ).mappings()
         return [dict(r) for r in rows]

@@ -10,6 +10,7 @@ __pycache__/
 coverage.json
 htmlcov/
 backups/
+.requirements-audit.txt
 
 SPEC.md
 mockup/
