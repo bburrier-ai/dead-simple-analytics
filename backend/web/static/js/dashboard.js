@@ -1,5 +1,5 @@
 /**
- * Dashboard - D3 chart + HTMX event table.
+ * Dashboard - D3 chart + fetch event table.
  */
 (function () {
   let activeSiteId = null;
@@ -415,6 +415,27 @@
     el.hidden = false;
   }
 
+  /** Format UTC ISO timestamps in the browser's local timezone with 12-hour clock. */
+  function formatEventTime(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  function localizeEventTimes(root) {
+    root.querySelectorAll('td[data-field="occurred_at"]').forEach((td) => {
+      const iso = td.getAttribute("data-value");
+      if (!iso) return;
+      td.textContent = formatEventTime(iso);
+    });
+  }
+
   function refreshEventsTable(options = {}) {
     hideEventsMenu();
     const tbody = document.getElementById("events-body");
@@ -438,6 +459,7 @@
       })
       .then(({ html, total, page, limit }) => {
         tbody.innerHTML = html;
+        localizeEventTimes(tbody);
         renderEventsPagination(total, page, limit);
       });
   }

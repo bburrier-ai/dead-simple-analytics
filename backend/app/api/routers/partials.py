@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from app.dependencies import CurrentUser, DemoMode, EventsSvc, SitesSvc
 from core.html import esc
 from core.serialize import serialize_row
+from core.time_window import resolve_tz
 from demo import fixtures as demo_fixtures
 
 router = APIRouter(prefix="/partials", tags=["partials"])
@@ -63,11 +64,16 @@ def parse_event_columns(raw: str | None) -> list[str]:
     return cols or list(DEFAULT_EVENT_COLUMNS)
 
 
-def _format_time(iso: str) -> str:
+def _format_time(iso: str, tz_name: str | None = None) -> str:
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %H:%M")
-    except ValueError:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        dt = dt.astimezone(resolve_tz(tz_name))
+        hour12 = dt.hour % 12 or 12
+        ampm = "AM" if dt.hour < 12 else "PM"
+        return f"{dt.strftime('%b')} {dt.day}, {hour12}:{dt.strftime('%M')} {ampm}"
+    except (TypeError, ValueError):
         return esc(iso)
 
 
@@ -110,7 +116,7 @@ def _cell(
     )
 
 
-def _event_row_cells(e: dict) -> dict[str, str]:
+def _event_row_cells(e: dict, *, tz_name: str | None = None) -> dict[str, str]:
     track_raw = (e.get("track_id") or "").strip()
     referrer_raw = e.get("referrer") or ""
     session_raw = e.get("session_id") or ""
@@ -128,7 +134,7 @@ def _event_row_cells(e: dict) -> dict[str, str]:
         "occurred_at": _cell(
             field="occurred_at",
             value=str(occurred),
-            display=_format_time(str(occurred)),
+            display=_format_time(str(occurred), tz_name),
             filter_by=None,
             classes="mono",
         ),
@@ -257,7 +263,7 @@ def events_table(
 
     out = []
     for e in rows:
-        cells = _event_row_cells(e)
+        cells = _event_row_cells(e, tz_name=tz)
         out.append("<tr>" + "".join(cells[c] for c in col_ids if c in cells) + "</tr>")
     return HTMLResponse(content="\n".join(out), headers=headers)
 
