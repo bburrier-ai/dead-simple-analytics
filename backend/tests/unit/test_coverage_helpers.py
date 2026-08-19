@@ -36,6 +36,8 @@ def test_format_time_uses_local_tz_and_ampm():
     assert _format_time("2026-07-08T18:37:00Z", "America/Los_Angeles") == "Jul 8, 11:37 AM"
     assert _format_time("2026-07-08T18:37:00Z", "UTC") == "Jul 8, 6:37 PM"
     assert _format_time("2026-07-08T00:05:00Z") == "Jul 8, 12:05 AM"
+    # Naive ISO is treated as UTC before local conversion.
+    assert _format_time("2026-07-08T18:37:00", "UTC") == "Jul 8, 6:37 PM"
 
 
 def test_format_location_variants():
