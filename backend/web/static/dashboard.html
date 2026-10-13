@@ -54,10 +54,22 @@
       </div>
 
       <section class="chart-card card" aria-label="Visits over time">
-        <h2>Visits over time</h2>
+        <div class="chart-card-header">
+          <h2>Visits over time</h2>
+          <div class="chart-scale-control">
+            <label for="chart-scale">Y-axis scale</label>
+            <select id="chart-scale" aria-describedby="chart-scale-note">
+              <option value="linear">Linear</option>
+              <option value="log">Log</option>
+            </select>
+          </div>
+        </div>
         <div class="chart-plot">
           <div id="visits-chart"></div>
         </div>
+        <p id="chart-scale-note" class="chart-scale-note" hidden>
+          Log scale omits zero-value points because a logarithmic axis cannot represent zero.
+        </p>
         <div id="visits-chart-detail" class="chart-hover-detail" aria-live="polite"></div>
       </section>
 

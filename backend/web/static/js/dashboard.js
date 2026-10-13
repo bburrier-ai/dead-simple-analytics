@@ -27,6 +27,7 @@
   ];
   const COLUMNS_STORAGE_KEY = "dsa-events-columns";
   const PERIOD_STORAGE_KEY = "dsa-chart-period";
+  const SCALE_STORAGE_KEY = "dsa-chart-scale";
   const DEFAULT_CHART_PERIOD = { unit: "days", value: 14 };
   const ALLOWED_CHART_PERIODS = [
     { unit: "hours", value: 24 },
@@ -64,6 +65,25 @@
     localStorage.setItem(PERIOD_STORAGE_KEY, JSON.stringify(period));
   }
 
+  function loadChartScale() {
+    try {
+      return localStorage.getItem(SCALE_STORAGE_KEY) === "log" ? "log" : "linear";
+    } catch {
+      return "linear";
+    }
+  }
+
+  function saveChartScale(scale) {
+    localStorage.setItem(SCALE_STORAGE_KEY, scale);
+  }
+
+  function syncChartScaleControl() {
+    const control = document.getElementById("chart-scale");
+    const note = document.getElementById("chart-scale-note");
+    if (control) control.value = chartScale;
+    if (note) note.hidden = chartScale !== "log";
+  }
+
   function syncPeriodPills() {
     document.querySelectorAll(".period-pill").forEach((btn) => {
       const unit = btn.dataset.period || "days";
@@ -96,6 +116,7 @@
   }
 
   let chartPeriod = loadChartPeriod();
+  let chartScale = loadChartScale();
   let eventColumns = loadEventColumns();
   let eventsPage = 1;
   let eventsPageCount = 1;
@@ -290,7 +311,7 @@
 
     const xScale = useLocalTime ? d3.scaleTime() : d3.scaleUtc();
     const x = xScale.domain(periodXDomain(data)).range([0, innerW]);
-    const y = d3
+    let y = d3
       .scaleLinear()
       .domain([0, d3.max(data, (d) => d.pageviews + d.clicks + d.hovers) * 1.1 || 1])
       .nice()
@@ -311,11 +332,40 @@
       hovers: chartColor("--chart-hover", "rgba(249, 209, 181, 0.39)"),
     };
 
-    g.selectAll(".area")
-      .data(areas)
-      .join("path")
-      .attr("fill", (d) => colors[d.key])
-      .attr("d", area);
+    if (chartScale === "linear") {
+      g.selectAll(".area")
+        .data(areas)
+        .join("path")
+        .attr("fill", (d) => colors[d.key])
+        .attr("d", area);
+    } else {
+      const keys = ["pageviews", "clicks", "hovers"];
+      const positiveValues = data.flatMap((point) =>
+        keys.map((key) => point[key]).filter((value) => value > 0)
+      );
+      const minValue = d3.min(positiveValues);
+      const maxValue = d3.max(positiveValues);
+      const logDomain =
+        minValue && maxValue
+          ? [Math.min(1, minValue / 10), Math.max(maxValue * 1.1, minValue * 10)]
+          : [1, 10];
+      y = d3.scaleLog().domain(logDomain).nice().range([innerH, 0]);
+      const line = (key) =>
+        d3
+          .line()
+          .defined((point) => point[key] > 0)
+          .x((point) => x(point.date))
+          .y((point) => y(point[key]))
+          .curve(d3.curveMonotoneX);
+      g.selectAll(".log-series")
+        .data(keys)
+        .join("path")
+        .attr("class", "log-series")
+        .attr("fill", "none")
+        .attr("stroke", (key) => colors[key])
+        .attr("stroke-width", 2)
+        .attr("d", (key) => line(key)(data));
+    }
 
     const focusLine = g
       .append("line")
@@ -807,6 +857,13 @@
       });
     });
 
+    document.getElementById("chart-scale")?.addEventListener("change", async (e) => {
+      chartScale = e.target.value === "log" ? "log" : "linear";
+      saveChartScale(chartScale);
+      syncChartScaleControl();
+      await loadChart();
+    });
+
     document.addEventListener("site-changed", async (e) => {
       activeSiteId = e.detail?.siteId || getActiveSiteId();
       await loadChart();
@@ -820,6 +877,7 @@
   window.initDashboard = async function initDashboard() {
     bindControls();
     syncPeriodPills();
+    syncChartScaleControl();
     renderEventsHeader();
     activeSiteId = getActiveSiteId();
     if (activeSiteId) {
