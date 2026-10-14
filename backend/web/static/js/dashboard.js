@@ -74,7 +74,11 @@
   }
 
   function saveChartScale(scale) {
-    localStorage.setItem(SCALE_STORAGE_KEY, scale);
+    try {
+      localStorage.setItem(SCALE_STORAGE_KEY, scale);
+    } catch {
+      // Keep the in-memory selection usable when browser storage is unavailable.
+    }
   }
 
   function syncChartScaleNote() {
