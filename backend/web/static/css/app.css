@@ -240,6 +240,16 @@ select {
   font-weight: bold;
 }
 
+.chart-scale-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.chart-scale-note[hidden] {
+  display: none;
+}
+
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
@@ -738,6 +748,12 @@ select {
 .context-menu-item:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.context-menu-item--selected::after {
+  content: "✓";
+  float: right;
+  margin-left: 1rem;
 }
 
 .columns-dialog-overlay {

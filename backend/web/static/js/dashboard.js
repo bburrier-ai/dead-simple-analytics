@@ -27,6 +27,7 @@
   ];
   const COLUMNS_STORAGE_KEY = "dsa-events-columns";
   const PERIOD_STORAGE_KEY = "dsa-chart-period";
+  const SCALE_STORAGE_KEY = "dsa-chart-scale";
   const DEFAULT_CHART_PERIOD = { unit: "days", value: 14 };
   const ALLOWED_CHART_PERIODS = [
     { unit: "hours", value: 24 },
@@ -64,6 +65,23 @@
     localStorage.setItem(PERIOD_STORAGE_KEY, JSON.stringify(period));
   }
 
+  function loadChartScale() {
+    try {
+      return localStorage.getItem(SCALE_STORAGE_KEY) === "linear" ? "linear" : "log";
+    } catch {
+      return "log";
+    }
+  }
+
+  function saveChartScale(scale) {
+    localStorage.setItem(SCALE_STORAGE_KEY, scale);
+  }
+
+  function syncChartScaleNote() {
+    const note = document.getElementById("chart-scale-note");
+    if (note) note.hidden = chartScale !== "log";
+  }
+
   function syncPeriodPills() {
     document.querySelectorAll(".period-pill").forEach((btn) => {
       const unit = btn.dataset.period || "days";
@@ -96,6 +114,7 @@
   }
 
   let chartPeriod = loadChartPeriod();
+  let chartScale = loadChartScale();
   let eventColumns = loadEventColumns();
   let eventsPage = 1;
   let eventsPageCount = 1;
@@ -254,6 +273,63 @@
     return out;
   }
 
+  const CHART_SERIES_KEYS = ["pageviews", "clicks", "hovers"];
+
+  function createLinearScale(data, innerH) {
+    return d3
+      .scaleLinear()
+      .domain([0, d3.max(data, (d) => d.pageviews + d.clicks + d.hovers) * 1.1 || 1])
+      .nice()
+      .range([innerH, 0]);
+  }
+
+  function createLogScale(data, innerH) {
+    const positiveValues = data.flatMap((point) =>
+      CHART_SERIES_KEYS.map((key) => point[key]).filter((value) => value > 0)
+    );
+    const minValue = d3.min(positiveValues);
+    const maxValue = d3.max(positiveValues);
+    const domain =
+      minValue && maxValue
+        ? [Math.min(1, minValue / 10), Math.max(maxValue * 1.1, minValue * 10)]
+        : [1, 10];
+    return d3.scaleLog().domain(domain).nice().range([innerH, 0]);
+  }
+
+  function renderAreaSeries(g, data, x, y, baselineY, colors) {
+    if (baselineY === null) {
+      const areas = d3.stack().keys(CHART_SERIES_KEYS)(data);
+      const area = d3
+        .area()
+        .x((d) => x(d.data.date))
+        .y0((d) => y(d[0]))
+        .y1((d) => y(d[1]))
+        .curve(d3.curveMonotoneX);
+      g.selectAll(".area")
+        .data(areas)
+        .join("path")
+        .attr("class", "area")
+        .attr("fill", (series) => colors[series.key])
+        .attr("d", area);
+      return;
+    }
+
+    g.selectAll(".area")
+      .data(CHART_SERIES_KEYS)
+      .join("path")
+      .attr("class", "area")
+      .attr("fill", (key) => colors[key])
+      .attr("d", (key) =>
+        d3
+          .area()
+          .defined((point) => point[key] > 0)
+          .x((point) => x(point.date))
+          .y0(baselineY)
+          .y1((point) => y(point[key]))
+          .curve(d3.curveMonotoneX)(data)
+      );
+  }
+
   function renderChart(series, totals) {
     const container = document.getElementById("visits-chart");
     if (!container || typeof d3 === "undefined") return;
@@ -290,20 +366,7 @@
 
     const xScale = useLocalTime ? d3.scaleTime() : d3.scaleUtc();
     const x = xScale.domain(periodXDomain(data)).range([0, innerW]);
-    const y = d3
-      .scaleLinear()
-      .domain([0, d3.max(data, (d) => d.pageviews + d.clicks + d.hovers) * 1.1 || 1])
-      .nice()
-      .range([innerH, 0]);
-
-    const stack = d3.stack().keys(["pageviews", "clicks", "hovers"]);
-    const areas = stack(data);
-    const area = d3
-      .area()
-      .x((d) => x(d.data.date))
-      .y0((d) => y(d[0]))
-      .y1((d) => y(d[1]))
-      .curve(d3.curveMonotoneX);
+    const y = chartScale === "linear" ? createLinearScale(data, innerH) : createLogScale(data, innerH);
 
     const colors = {
       pageviews: chartColor("--chart-pageview", "rgba(180, 208, 239, 0.5)"),
@@ -311,11 +374,8 @@
       hovers: chartColor("--chart-hover", "rgba(249, 209, 181, 0.39)"),
     };
 
-    g.selectAll(".area")
-      .data(areas)
-      .join("path")
-      .attr("fill", (d) => colors[d.key])
-      .attr("d", area);
+    const baselineY = chartScale === "log" ? y(y.domain()[0]) : null;
+    renderAreaSeries(g, data, x, y, baselineY, colors);
 
     const focusLine = g
       .append("line")
@@ -462,6 +522,77 @@
         localizeEventTimes(tbody);
         renderEventsPagination(total, page, limit);
       });
+  }
+
+  let chartMenuEl = null;
+
+  function hideChartMenu({ restoreFocus = false } = {}) {
+    if (!chartMenuEl) return;
+    chartMenuEl.remove();
+    chartMenuEl = null;
+    if (restoreFocus) document.getElementById("visits-chart")?.focus();
+  }
+
+  function showChartMenu(clientX, clientY) {
+    hideChartMenu();
+    const menu = document.createElement("div");
+    menu.className = "context-menu chart-context-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "Chart scale");
+    menu.innerHTML = ["log", "linear"]
+      .map(
+        (scale) => `
+          <button
+            type="button"
+            class="context-menu-item${chartScale === scale ? " context-menu-item--selected" : ""}"
+            data-chart-scale="${scale}"
+            role="menuitemradio"
+            aria-checked="${chartScale === scale}"
+          >${scale === "log" ? "Log" : "Linear"}</button>
+        `
+      )
+      .join("");
+    document.body.appendChild(menu);
+    chartMenuEl = menu;
+    placeEventsMenu(menu, clientX, clientY);
+    menu.querySelector("[data-chart-scale]")?.focus();
+
+    menu.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-chart-scale]");
+      const scale = button?.dataset.chartScale;
+      if (scale !== "log" && scale !== "linear") return;
+      chartScale = scale;
+      saveChartScale(chartScale);
+      syncChartScaleNote();
+      hideChartMenu({ restoreFocus: true });
+      await loadChart();
+    });
+  }
+
+  function bindChartMenu() {
+    const container = document.getElementById("visits-chart");
+    if (!container) return;
+    container.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      showChartMenu(event.clientX, event.clientY);
+    });
+    container.addEventListener("keydown", (event) => {
+      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+      event.preventDefault();
+      const rect = container.getBoundingClientRect();
+      showChartMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    });
+    document.addEventListener("mousedown", (event) => {
+      if (chartMenuEl && !event.target.closest(".chart-context-menu")) {
+        hideChartMenu();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideChartMenu({ restoreFocus: true });
+    });
+    window.addEventListener("blur", hideChartMenu);
+    window.addEventListener("resize", hideChartMenu);
+    document.addEventListener("scroll", hideChartMenu, true);
   }
 
   let eventsMenuEl = null;
@@ -773,6 +904,7 @@
   }
 
   function bindControls() {
+    bindChartMenu();
     bindEventsTableMenu();
     document.getElementById("event-search")?.addEventListener("input", () => {
       refreshEventsTable({ resetPage: true });
@@ -820,6 +952,7 @@
   window.initDashboard = async function initDashboard() {
     bindControls();
     syncPeriodPills();
+    syncChartScaleNote();
     renderEventsHeader();
     activeSiteId = getActiveSiteId();
     if (activeSiteId) {

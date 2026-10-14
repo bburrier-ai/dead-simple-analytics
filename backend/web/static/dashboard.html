@@ -56,8 +56,11 @@
       <section class="chart-card card" aria-label="Visits over time">
         <h2>Visits over time</h2>
         <div class="chart-plot">
-          <div id="visits-chart"></div>
+          <div id="visits-chart" tabindex="0" aria-label="Visits over time chart. Right-click for chart scale options."></div>
         </div>
+        <p id="chart-scale-note" class="chart-scale-note">
+          Log scale omits zero-value points because a logarithmic axis cannot represent zero.
+        </p>
         <div id="visits-chart-detail" class="chart-hover-detail" aria-live="polite"></div>
       </section>
 
