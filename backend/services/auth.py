@@ -10,6 +10,8 @@ from core.exceptions import UnauthorizedError
 from core.models import User
 from db.repositories.users import UsersRepository
 
+ALLOWED_JWT_ALGORITHMS = ("HS256",)
+
 
 class AuthService:
     def __init__(self, engine: Engine | None = None) -> None:
@@ -29,7 +31,7 @@ class AuthService:
 
     def decode_token(self, token: str) -> UUID:
         try:
-            payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+            payload = jwt.decode(token, settings.jwt_secret, algorithms=ALLOWED_JWT_ALGORITHMS)
             return UUID(payload["sub"])
         except (jwt.PyJWTError, ValueError, KeyError) as exc:
             raise UnauthorizedError("Invalid session") from exc

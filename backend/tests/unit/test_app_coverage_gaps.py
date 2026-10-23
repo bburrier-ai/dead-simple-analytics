@@ -6,20 +6,22 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import jwt
 import pytest
 from pydantic import ValidationError
 
 from app.api.routers.partials import _format_time
 from app.api.schemas import CollectEvent
 from config.logging import JsonFormatter
-from core.exceptions import NotFoundError
+from config.settings import settings
+from core.exceptions import NotFoundError, UnauthorizedError
 from core.models import EventType
 from core.rate_limit import SlidingWindowRateLimiter
 from db.repositories.events import EventsRepository
 from db.repositories.sites import SitesRepository
 from demo import fixtures as demo_fixtures
 from demo import mode as demo_mode
-from services.auth import AuthService
+from services.auth import ALLOWED_JWT_ALGORITHMS, AuthService
 from services.collect import CollectService
 from services.sites import SitesService
 
@@ -82,6 +84,19 @@ def test_auth_decode_token_error_paths():
 
     assert "Invalid session" in str(exc_info.value)
     assert service.decode_token_optional("not-a-token") is None
+
+
+def test_auth_rejects_tokens_not_signed_with_the_allowed_algorithm(monkeypatch):
+    user_id = uuid4()
+    monkeypatch.setattr(settings, "jwt_secret", "a" * 64)
+    service = AuthService()
+
+    assert ALLOWED_JWT_ALGORITHMS == ("HS256",)
+    assert service.decode_token(service.create_token(user_id)) == user_id
+
+    disallowed_token = jwt.encode({"sub": str(user_id)}, settings.jwt_secret, algorithm="HS512")
+    with pytest.raises(UnauthorizedError, match="Invalid session"):
+        service.decode_token(disallowed_token)
 
 
 def test_collect_service_direct_error_paths():
@@ -299,4 +314,3 @@ def test_demo_mode_cookie_branches():
     request.cookies = {demo_mode.COOKIE_NAME: "unexpected"}
     assert demo_mode.enabled_from_request(request, environment="local") is True
     assert demo_mode.enabled_from_request(request, environment="production") is False
-
